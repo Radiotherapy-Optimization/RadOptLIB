@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "radoptlib"
+version = "1.0.0"
+description = "A library of radiotherapy treatment-planning optimization problem instances"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+dependencies = [
+    "numpy",
+    "scipy",
+    "h5py",
+]
+
+[project.optional-dependencies]
+test = ["pytest", "highspy"]
+
+[project.urls]
+Homepage = "https://github.com/Radiotherapy-Optimization/RadOptLIB"
+
+[tool.setuptools.packages.find]
+where = ["src"]

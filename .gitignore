@@ -1,0 +1,26 @@
+# Private generation tooling, registry trace files and h5 output -- never published
+internal/
+
+# Local session notes (internal paths and workflow) -- never published
+CLAUDE.md
+
+# Problem instances are hosted on Harvard Dataverse, not in git
+*.h5
+*.mps
+*.mps.gz
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.venv/
+venv/
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

@@ -1,10 +1,11 @@
 """Write an instance as a free-format QPS file (MPS + QUADOBJ, the Maros-Meszaros convention).
 
-Model written:  minimize 0.5 x'Qx + q'x + c  subject to  Gx <= h,  x free.
+Model written:  minimize 0.5 x'Qx + q'x + c  subject to  Gx <= h,  l <= x <= u.
   - ROWS: objective row 'obj' (N) and one 'L' row per row of G, named c1..cm
   - COLUMNS: variables x1..xn with their q entry and G column
   - RHS: h, and -c on the objective row (the standard way MPS stores an objective constant)
-  - BOUNDS: every variable free (MPS defaults to x >= 0 otherwise)
+  - BOUNDS: every variable written explicitly (MPS would default to 0 <= x <= +inf otherwise):
+    FX (l = u), FR (no bounds), MI (no lower bound), LO / UP for finite bounds
   - QUADOBJ: the lower triangle of Q; readers apply the 0.5 factor
 Most QP solvers (Gurobi, CPLEX, MOSEK, HiGHS, COPT, ...) read this format.
 The file is written in streaming blocks; large instances give multi-GB text, hence .mps.gz by default.
@@ -62,8 +63,22 @@ def to_mps(problem, path=None, compress=True):
         nz = np.flatnonzero(h)
         _write_triplets(out, ['RHS'] * len(nz), ['c{}'.format(i + 1) for i in nz], h[nz], ' {}  {}  {}\n')
         out.write('BOUNDS\n')
+        l = np.asarray(getattr(problem, 'l', np.full(n, -np.inf)), dtype=np.float64)
+        u = np.asarray(getattr(problem, 'u', np.full(n, np.inf)), dtype=np.float64)
         for s in range(0, n, _BLOCK):
-            out.write(''.join(' FR BND  x{}\n'.format(j) for j in range(s + 1, min(s + _BLOCK, n) + 1)))
+            lines = []
+            for j in range(s, min(s + _BLOCK, n)):
+                lj, uj, nm = l[j], u[j], 'x{}'.format(j + 1)
+                if lj == uj:
+                    lines.append(' FX BND  {}  {}\n'.format(nm, _num(lj)))
+                    continue
+                if np.isinf(lj) and np.isinf(uj):
+                    lines.append(' FR BND  {}\n'.format(nm))
+                    continue
+                lines.append(' MI BND  {}\n'.format(nm) if np.isinf(lj) else ' LO BND  {}  {}\n'.format(nm, _num(lj)))
+                if not np.isinf(uj):
+                    lines.append(' UP BND  {}  {}\n'.format(nm, _num(uj)))
+            out.write(''.join(lines))
         out.write('QUADOBJ\n')
         _write_triplets(out, q_cols, L.indices + 1, L.data, ' x{}  x{}  {}\n')
         out.write('ENDATA\n')

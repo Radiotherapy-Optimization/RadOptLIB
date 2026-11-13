@@ -13,7 +13,7 @@ import scipy.sparse as sp
 
 PROBLEM_CLASSES = ('qp',)
 MANIFEST_URL = 'https://raw.githubusercontent.com/Radiotherapy-Optimization/RadOptLIB/main/manifest/{}.csv'
-INT_COLUMNS = ('type', 'n', 'm', 'n_equalities', 'nnz_Q', 'nnz_G', 'file_size_bytes')
+INT_COLUMNS = ('type', 'n_vars', 'n_ineq_cons', 'n_eq_cons', 'nnz_Q', 'nnz_G', 'file_size_bytes')
 
 _manifest_cache = {}
 
@@ -90,7 +90,7 @@ def select(**filters):
 
     Any manifest column can be a filter; a list value means "any of", e.g. size=['small', 'medium'].
     Numeric columns also take inclusive ranges with min_/max_ prefixes, e.g.
-    select(max_n=50000, min_m=100000) or select(max_file_size_bytes=500e6)."""
+    select(max_n_vars=50000, min_n_ineq_cons=100000) or select(max_file_size_bytes=500e6)."""
     return [r['name'] for r in list_instances()
             if all(_matches(r, k, v) for k, v in filters.items())]
 
@@ -155,13 +155,14 @@ def download(name_or_class, disease_site=None, **filters):
 
 
 class Problem:
-    """A QP  minimize 0.5 x'Qx + q'x + c  subject to  Gx <= h.
+    """A QP  minimize 0.5 x'Qx + q'x + c  subject to  Gx <= h,  l <= x <= u.
 
-    Q and G are scipy CSR matrices, q and h numpy vectors, c a float. `info` holds the key/value
-    metadata stored in the file (name, disease_site, modality, type, protocol, ...)."""
+    Q (symmetric) and G are scipy CSR matrices; q, h, l, u numpy vectors (-inf / +inf in l / u where a
+    variable has no bound); c a float. `info` holds the metadata stored in the file (name, disease_site,
+    modality, type, patient, protocol, ...)."""
 
-    def __init__(self, name, Q, q, c, G, h, info, format_note):
-        self.name, self.Q, self.q, self.c, self.G, self.h = name, Q, q, c, G, h
+    def __init__(self, name, Q, q, c, G, h, l, u, info, format_note):
+        self.name, self.Q, self.q, self.c, self.G, self.h, self.l, self.u = name, Q, q, c, G, h, l, u
         self.info, self.format_note = info, format_note
 
     @property
@@ -196,31 +197,50 @@ def load(name_or_path):
     if not (path.suffix == '.h5' and path.exists()):
         path = download(str(name_or_path))[0]
     with h5py.File(path, 'r') as f:
-        meta = {}
-        for line in _read_str(f, 'data_note').splitlines():
-            if ':' in line:
-                k, v = line.split(':', 1)
-                meta[k.strip()] = v.strip()
-        return Problem(name=meta.get('name', path.stem), Q=_read_csr(f, 'Q'), q=f['q'][()], c=float(f['c'][()]),
-                       G=_read_csr(f, 'G'), h=f['h'][()], info=meta, format_note=_read_str(f, 'format_note'))
+        meta = {k: (v.item() if isinstance(v, np.generic) else v) for k, v in f.attrs.items()}
+        if not meta:                               # files without attributes: parse the data_note text
+            for line in _read_str(f, 'data_note').splitlines():
+                if ':' in line:
+                    k, v = line.split(':', 1)
+                    meta[k.strip()] = v.strip()
+        Q = _read_csr(f, 'Q')
+        n = Q.shape[0]
+        l = f['l'][()] if 'l' in f else np.full(n, -np.inf)
+        u = f['u'][()] if 'u' in f else np.full(n, np.inf)
+        return Problem(name=meta.get('name', path.stem), Q=Q, q=f['q'][()], c=float(f['c'][()]),
+                       G=_read_csr(f, 'G'), h=f['h'][()], l=l, u=u, info=meta,
+                       format_note=_read_str(f, 'format_note'))
 
 
 def load_solution(name_or_path, solver='warmip'):
     """Load a reference solution: a local <name>-sol-<solver>.h5 path, or an instance name looked up as
-    data_dir()/<name>-sol-<solver>.h5 (solver: lowercase name, default 'warmip').
+    data_dir()/<name>-sol-<solver>.h5 (solver: lowercase name, default 'warmip'). For the default solver a
+    missing file is downloaded from the manifest's sol_url (checked against sol_md5) on first use.
 
-    Returns a dict with name, x (length n), dual (length m, multipliers of Gx <= h), objective,
-    primal_res, dual_res, gap, dual_infeas, solver and format_note. Reference solutions come from a
-    numerical solver and are NOT guaranteed to be optimal; check one with
-    verify_solution(load(name), sol['x'], sol['dual'])."""
+    Returns a dict with name, x (length n), dual_ineq_cons (length m, multipliers of Gx <= h),
+    dual_lower_bound and dual_upper_bound (length n, multipliers of x >= l and x <= u), solver and
+    format_note. Reference solutions come from a numerical solver and are not guaranteed to be optimal;
+    check one with verify_solution(load(name), sol['x'], sol['dual_ineq_cons'], sol['dual_lower_bound'],
+    sol['dual_upper_bound'])."""
     path = Path(name_or_path)
     if not (path.suffix == '.h5' and path.exists()):
         path = data_dir() / '{}-sol-{}.h5'.format(name_or_path, solver)
+        row = info(str(name_or_path)) if solver == 'warmip' and not path.exists() else {}
+        if not path.exists() and row.get('sol_url'):
+            part = path.with_suffix('.h5.part')
+            print('downloading the {} reference solution of {}'.format(solver, name_or_path), flush=True)
+            with urllib.request.urlopen(row['sol_url'], timeout=60) as resp, open(part, 'wb') as out:
+                shutil.copyfileobj(resp, out, length=1 << 24)
+            if row.get('sol_md5') and _md5(part) != row['sol_md5']:
+                part.unlink()
+                raise RuntimeError('md5 mismatch for the solution of {} -- download removed, please retry'
+                                   .format(name_or_path))
+            os.replace(part, path)
         if not path.exists():
             raise FileNotFoundError('no {} solution file for {} (looked for {})'.format(solver, name_or_path, path))
     with h5py.File(path, 'r') as f:
-        ref = {'name': path.stem.split('-sol-')[0], 'x': f['x'][()], 'dual': f['dual'][()],
-               'solver': _read_str(f, 'solver'), 'format_note': _read_str(f, 'format_note')}
-        for k in ('objective', 'primal_res', 'dual_res', 'gap', 'dual_infeas'):
-            ref[k] = float(f[k][()])
+        ref = {'name': path.stem.split('-sol-')[0], 'solver': _read_str(f, 'solver'),
+               'format_note': _read_str(f, 'format_note')}
+        for k in ('x', 'dual_ineq_cons', 'dual_lower_bound', 'dual_upper_bound'):
+            ref[k] = f[k][()]
     return ref

@@ -12,9 +12,15 @@ downloading, loading, checking and converting them.
 
 | Class | Formulation | Instances | Since | Details |
 |---|---|---|---|---|
-| `qp` | convex QP: minimize ½x'Qx + q'x + c subject to Gx ≤ h | 142 | 1.0 | [docs/qp.md](docs/qp.md) |
+| `qp` | convex QP: minimize ½x'Qx + q'x + c subject to Gx ≤ h, l ≤ x ≤ u | 142 | 1.0 | [docs/qp.md](docs/qp.md) |
 
-<p align="center"><img src="assets/qp_problem_size.png" width="520" alt="Number of variables vs number of constraints of the QP instances, by disease site"></p>
+<p align="center">
+<img src="assets/qp_problem_size.png" width="420" alt="Number of variables vs number of inequality constraints of the QP instances, by disease site, with the size classes">
+<img src="assets/qp_size_vs_benchmarks.png" width="420" alt="Number of variables vs number of linear constraints of the RadOptLIB QP instances compared with the Maros-Meszaros and MPC QP test sets">
+</p>
+<p align="center"><sub>Left: the QP instances by disease site and size class. Right: compared with the Maros–Mészáros
+and MPC QP test sets. The constraint matrices of the RadOptLIB instances have 1.3–314 million nonzeros,
+against at most 0.56 million in Maros–Mészáros and 3,502 in MPC.</sub></p>
 
 Instances are named `rt-<class>-####` (for example `rt-qp-0001`), numbered separately per class.
 Further classes (for example conic problems) will be added as new rows of this table.
@@ -43,15 +49,15 @@ names = radoptlib.select(problem_class='qp', disease_site='lung', type=1)
 p = radoptlib.load(names[0])            # downloaded on first use, then read from the local cache
 print(p)                                # <Problem rt-qp-0001: n=... m=... nnz_Q=... nnz_G=...>
 
-x, dual = my_solver(p.Q, p.q, p.G, p.h)  # your solver
-print(radoptlib.verify_solution(p, x, dual))
+x, dual_ineq_cons, dual_lower_bound, dual_upper_bound = my_solver(p.Q, p.q, p.G, p.h, p.l, p.u)   # your solver: primal x and the multipliers
+print(radoptlib.verify_solution(p, x, dual_ineq_cons, dual_lower_bound, dual_upper_bound))
 ```
 
 ## Finding and downloading instances
 
 Each problem class has a manifest, `manifest/<class>.csv`, with one row per instance: its name, the
 disease site, the treatment modality, the type, the problem size, the file size, the download url and
-the md5 checksum. The columns are described in the class documentation (for QP: [docs/qp.md](docs/qp.md)).
+the md5 checksum, plus the download url and md5 of its reference solution. The columns are described in the class documentation (for QP: [docs/qp.md](docs/qp.md)).
 
 ```python
 radoptlib.list_instances('qp')                      # all manifest rows of a class
@@ -62,7 +68,7 @@ selected = radoptlib.select(disease_site='prostate', type=2)   # names matching 
 radoptlib.download(selected)                        # download exactly those
 
 selected = radoptlib.select(size='small')                      # by size class: small, medium or large
-selected = radoptlib.select(max_n=50000, max_file_size_bytes=500e6)   # min_/max_ limits on any numeric column
+selected = radoptlib.select(max_n_vars=50000, max_file_size_bytes=500e6)   # min_/max_ limits on any numeric column
 
 ```
 
@@ -73,57 +79,20 @@ Files are stored in `~/.radoptlib` (or the folder in the `RADOPTLIB_DATA` enviro
 Every download is checked against the md5 in the manifest, and files already present are not
 downloaded again. Some instances are large (up to about 2 GB per file).
 
-## Python package
-
-| Function | Purpose |
-|---|---|
-| `load(name_or_path)` | read an instance into a `Problem` (sparse `Q`, `G`; vectors `q`, `h`; scalar `c`) |
-| `download`, `select`, `info`, `list_instances` | find and fetch instances through the manifest |
-| `verify_solution(problem, x, dual=None, tol=None)` | residuals of a candidate solution (see below) |
-| `load_solution(name_or_path, solver='warmip')` | read a reference solution |
-| `to_mps(problem, path)` | write a QP as a QPS (MPS) file for solvers that read that format |
-
-The files can also be read without the package; the layout is described in each class document.
-
-## Checking a solution
-
-`verify_solution` reports relative residuals in the infinity norm, so results from different solvers
-can be compared on the same scale:
-
-- `primal_res` = ‖max(Gx − h, 0)‖ / (1 + max(‖Gx‖, ‖h‖))
-- `dual_res` = ‖Qx + q + G'y‖ / (1 + max(‖Qx‖, ‖q‖, ‖G'y‖))
-- `gap` = |pobj − dobj| / (1 + max(|pobj|, |dobj|)), with pobj = ½x'Qx + q'x + c and dobj = −½x'Qx − h'y + c
-- `dual_infeas` = ‖max(−y, 0)‖
-
-where y ≥ 0 are the multipliers of Gx ≤ h. With `tol`, the result also contains `ok` (all residuals ≤ tol).
-
 ## Reference solutions
 
 Reference solutions are provided for the instances, computed with
 [Warm-IP](https://github.com/Radiotherapy-Optimization/Warm-IP).
-They are **not guaranteed to be optimal**: each file stores the solver's primal and dual vectors
-together with the residuals above, so their quality can be checked directly. Solutions from other
+They are **not guaranteed to be optimal**: each file stores the solver's primal and dual vectors,
+and their quality can be checked with `verify_solution` (the files store no residuals). Solutions from other
 solvers may be added later; the solver is part of the file name, `rt-<class>-####-sol-<solver>.h5`
 (for example `rt-qp-0001-sol-warmip.h5`).
 
 ```python
-sol = radoptlib.load_solution('rt-qp-0001')              # from the cache folder, or pass a file path
-radoptlib.verify_solution(radoptlib.load('rt-qp-0001'), sol['x'], sol['dual'])
+sol = radoptlib.load_solution('rt-qp-0001')              # downloaded on first use, or pass a file path
+radoptlib.verify_solution(radoptlib.load('rt-qp-0001'), sol['x'], sol['dual_ineq_cons'],
+                          sol['dual_lower_bound'], sol['dual_upper_bound'])
 ```
-
-## Versioning
-
-Published instance files never change. New instances receive new numbers, and corrections are
-released as new instances; every release is listed in [CHANGELOG.md](CHANGELOG.md). The manifest
-column `added_in_version` gives the release in which each instance first appeared.
-
-## Limitations and intended use
-
-- The instances come from one planning algorithm, a limited number of disease sites and one
-  treatment modality (see the class documentation). They are representative of that setting, not of
-  radiotherapy planning in general.
-- The data are released for research on optimization methods only. They are not suitable for, and
-  must not be used for, clinical decisions.
 
 ## Citation
 

@@ -28,7 +28,7 @@ def read_qps(path):
             elif sec == 'RHS':
                 rhs[t[1]] = float(t[2])
             elif sec == 'BOUNDS':
-                bounds[t[2]] = t[0]
+                bounds.setdefault(t[2], []).append((t[0], float(t[3]) if len(t) > 3 else None))
             elif sec == 'QUADOBJ':
                 quad[(t[0], t[1])] = float(t[2])
     return name, rows, cols, A, rhs, bounds, quad
@@ -42,7 +42,22 @@ def test_mps_roundtrip(tmp_path, qp_file, compress):
     n, m = p.n, p.m
     assert name == 'rt-qp-9999'
     assert rows[0] == ('N', 'obj') and len(rows) == m + 1 and all(r[0] == 'L' for r in rows[1:])
-    assert len(bounds) == n and set(bounds.values()) == {'FR'}
+    assert len(bounds) == n
+    l = np.zeros(n); u = np.full(n, np.inf)                # MPS defaults
+    for nm, entries in bounds.items():
+        j = int(nm[1:]) - 1
+        for kind, v in entries:
+            if kind == 'FR':
+                l[j], u[j] = -np.inf, np.inf
+            elif kind == 'MI':
+                l[j] = -np.inf
+            elif kind == 'LO':
+                l[j] = v
+            elif kind == 'UP':
+                u[j] = v
+            elif kind == 'FX':
+                l[j] = u[j] = v
+    assert np.array_equal(l, p.l) and np.array_equal(u, p.u)
     q = np.zeros(n); G = np.zeros((m, n)); Q = np.zeros((n, n))
     for (r, c), v in A.items():
         j = int(c[1:]) - 1
@@ -73,3 +88,4 @@ def test_mps_highs(tmp_path, qp_file, qp):
     x = np.array(h.getSolution().col_value)
     assert h.getInfo().objective_function_value == pytest.approx(p.objective(qp['x']), rel=1e-6)
     assert radoptlib.verify_solution(p, x)['primal_res'] < 1e-7
+    assert np.array_equal(np.array(h.getLp().col_lower_), np.maximum(p.l, -highspy.kHighsInf))

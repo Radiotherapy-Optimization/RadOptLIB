@@ -1,0 +1,675 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RadOptLIB instance browser</title>
+<meta name="description" content="Browse, filter and download the RadOptLIB benchmark instances.">
+<!--
+  RadOptLIB instance browser. One static page, no build step and no outside libraries.
+  It reads ../manifest/<class>.csv each time it loads, so it always shows the current manifest.
+  To add a problem class, add it to CLASSES below (the manifest must have the same columns).
+  To preview locally, run `python -m http.server` in the repository folder and open
+  http://localhost:8000/dashboard/ (a page opened straight from disk cannot read the manifest).
+-->
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+    --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,.10); --wash: rgba(11,11,11,.045);
+    --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --s6: #008300;
+    --accent: #2a78d6; --accent-ink: #ffffff; --code: #f1f0ec;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+      --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,.10); --wash: rgba(255,255,255,.06);
+      --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300;
+      --accent: #3987e5; --accent-ink: #ffffff; --code: #111110;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--ink);
+         font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  a { color: var(--accent); }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 20px 16px 48px; }
+  header h1 { font-size: 24px; margin: 0 0 4px; }
+  header p { margin: 0; color: var(--ink-2); max-width: 70ch; }
+  nav { margin: 8px 0 18px; display: flex; flex-wrap: wrap; gap: 4px 18px; font-size: 14px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  h2 { font-size: 15px; margin: 0 0 8px; }
+
+  /* filters: one row above everything they scope */
+  .filters { display: flex; flex-wrap: wrap; gap: 10px 26px; align-items: flex-start; margin-bottom: 12px; }
+  fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+  legend, .flabel { padding: 0; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em;
+                    margin-bottom: 4px; display: block; }
+  .checks { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+  .checks label { white-space: nowrap; cursor: pointer; }
+  .checks .n { color: var(--muted); font-variant-numeric: tabular-nums; }
+  select, button { font: inherit; color: inherit; }
+  select { background: var(--surface); border: 1px solid var(--axis); border-radius: 6px; padding: 4px 8px; }
+  button { background: var(--surface); border: 1px solid var(--axis); border-radius: 6px; padding: 5px 12px; cursor: pointer; }
+  button:hover:not(:disabled) { background: var(--wash); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  button.primary:hover:not(:disabled) { background: var(--accent); filter: brightness(1.08); }
+
+  .totals { display: flex; flex-wrap: wrap; gap: 6px 28px; align-items: baseline; margin: 0 0 12px; }
+  .totals .stat b { font-size: 20px; font-weight: 650; }
+  .totals .stat span { color: var(--ink-2); }
+  .totals .note { color: var(--muted); font-size: 13px; }
+  .totals .spacer { flex: 1; }
+
+  .grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 12px; margin-bottom: 12px; }
+  @media (max-width: 900px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+
+  /* plot */
+  .plotbox { position: relative; }
+  .plotbox svg { display: block; width: 100%; height: auto; touch-action: manipulation; cursor: crosshair; }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; color: var(--ink-2); margin-bottom: 4px; }
+  .legend span { display: inline-flex; align-items: center; gap: 5px; }
+  .legend svg { width: 14px; height: 14px; flex: none; }
+  .tick, .axis-title, .region { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .axis-title { fill: var(--ink-2); font-size: 12px; }
+  .tip { position: absolute; pointer-events: none; z-index: 5; background: var(--surface); color: var(--ink);
+         border: 1px solid var(--axis); border-radius: 8px; padding: 8px 10px; font-size: 12.5px;
+         box-shadow: 0 4px 14px rgba(0,0,0,.14); min-width: 190px; display: none; }
+  .tip .name { font-weight: 650; font-size: 13.5px; margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
+  .tip .name svg { width: 12px; height: 12px; }
+  .tip dl { display: grid; grid-template-columns: auto auto; gap: 1px 12px; margin: 0; }
+  .tip dt { color: var(--ink-2); }
+  .tip dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .hint { color: var(--muted); font-size: 12.5px; margin: 4px 0 0; }
+
+  /* download panel */
+  .dl-main { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-bottom: 6px; }
+  .incl { font-size: 13.5px; }
+  .dl-note { font-size: 13px; color: var(--ink-2); margin: 0 0 10px; }
+  h3 { font-size: 13.5px; margin: 14px 0 4px; }
+  .links { margin: 4px 0 0; padding-left: 18px; font-size: 13.5px; }
+  .links li { margin: 2px 0; }
+  code { font: 12.5px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: nowrap; }
+  .lists { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+  .lists button { font-size: 13px; }
+
+  /* table */
+  .tablewrap { overflow: auto; max-height: 640px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+  th, td { padding: 5px 10px; text-align: left; white-space: nowrap; border-bottom: 1px solid var(--grid); }
+  thead th { position: sticky; top: 0; background: var(--surface); z-index: 1; font-weight: 600; color: var(--ink-2);
+             border-bottom: 1px solid var(--axis); }
+  thead th button { all: unset; cursor: pointer; }
+  thead th button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  thead th .arrow { color: var(--muted); font-size: 11px; margin-left: 3px; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tbody tr:hover { background: var(--wash); }
+  tbody tr.sel { background: color-mix(in srgb, var(--accent) 9%, transparent); }
+  td .dot { display: inline-block; vertical-align: -1px; margin-right: 6px; }
+  td .dot svg { width: 11px; height: 11px; display: block; }
+  .na { color: var(--muted); }
+  .empty { padding: 18px; color: var(--ink-2); }
+  .error { border-color: var(--s2); }
+  footer { margin-top: 18px; color: var(--muted); font-size: 13px; }
+  input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; vertical-align: -2px; margin: 0 5px 0 0; }
+  td input[type=checkbox], th input[type=checkbox] { margin: 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>RadOptLIB instance browser</h1>
+    <p>Large-scale optimization problems from cancer radiotherapy. Filter the instances, select the ones you
+       want and download them, with their reference solutions, as HDF5 files.</p>
+  </header>
+  <nav>
+    <a href="https://github.com/Radiotherapy-Optimization/RadOptLIB">GitHub repository</a>
+    <a id="lnk-format" href="https://github.com/Radiotherapy-Optimization/RadOptLIB/blob/main/docs/qp.md">File format and how to read it</a>
+    <a href="https://github.com/Radiotherapy-Optimization/RadOptLIB/blob/main/mps/README.md">Converting to MPS</a>
+  </nav>
+
+  <div id="error" class="card error" hidden></div>
+
+  <div id="app" hidden>
+    <div class="filters" id="filters">
+      <div>
+        <label class="flabel" for="class">Problem class</label>
+        <select id="class"></select>
+      </div>
+    </div>
+
+    <div class="totals">
+      <div class="stat"><b id="t-shown">0</b> <span id="t-shown-of"></span></div>
+      <div class="stat"><b id="t-sel">0</b> <span>selected</span></div>
+      <div class="stat"><b id="t-size">0</b> <span>to download</span></div>
+      <div class="note" id="t-hidden"></div>
+      <div class="spacer"></div>
+      <button id="btn-all">Select all shown</button>
+      <button id="btn-none">Clear selection</button>
+      <button id="btn-reset">Reset filters</button>
+    </div>
+
+    <div class="grid">
+      <section class="card">
+        <h2>Problem sizes</h2>
+        <div class="legend" id="legend"></div>
+        <div class="plotbox" id="plotbox">
+          <svg id="plot" viewBox="0 0 720 450" role="img"
+               aria-label="Scatter plot of the number of variables against the number of constraints of each instance. The table below holds the same values."></svg>
+          <div class="tip" id="tip"></div>
+        </div>
+        <p class="hint">Point to an instance for its details; click it to select or deselect it.</p>
+      </section>
+
+      <section class="card">
+        <h2>Download the selection</h2>
+        <div class="dl-main">
+          <button class="primary" id="btn-dl" disabled>Download selected</button>
+          <label class="incl"><input type="checkbox" id="with-sol" checked>Include the reference solutions (a few MB each)</label>
+        </div>
+        <p class="dl-note" id="dl-note"></p>
+        <h3>Download script</h3>
+        <p class="dl-note">For any number of files, with nothing to install. Save the script into the folder where
+          the files should go and run it. It can be run again: complete files are skipped and interrupted
+          downloads are resumed.</p>
+        <div class="lists">
+          <button id="btn-bat">Save script for Windows (.bat)</button>
+          <button id="btn-sh">Save script for macOS and Linux (.sh)</button>
+        </div>
+        <p class="hint">Windows: double-click the saved file. macOS and Linux: run <code>sh radoptlib-download.sh</code>
+          in a terminal. The scripts use curl, which is part of Windows 10 and later, macOS and Linux.</p>
+        <h3>Lists for other download tools</h3>
+        <div class="lists">
+          <button id="btn-urls">Save address list (.txt)</button>
+          <button id="btn-md5">Save checksum list (.md5)</button>
+        </div>
+        <h3>After downloading</h3>
+        <ul class="links">
+          <li><a id="lnk-read" href="https://github.com/Radiotherapy-Optimization/RadOptLIB/blob/main/docs/qp.md#reading-a-file">Reading the files in Julia and MATLAB</a></li>
+          <li><a href="https://github.com/Radiotherapy-Optimization/RadOptLIB/blob/main/mps/README.md">Converting the files to MPS</a></li>
+          <li><a href="https://github.com/Radiotherapy-Optimization/RadOptLIB/blob/main/examples/quickstart.ipynb">Python quick start (notebook)</a></li>
+        </ul>
+      </section>
+    </div>
+
+    <section class="card">
+      <h2>Instances</h2>
+      <div class="tablewrap">
+        <table id="table">
+          <thead><tr id="thead"></tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+        <div class="empty" id="empty" hidden>No instance matches the filters.</div>
+      </div>
+    </section>
+
+    <footer>
+      Data: CC BY 4.0. Code: MIT. This page reads
+      <a id="lnk-manifest" href="../manifest/qp.csv">the manifest</a> of the repository each time it loads.
+    </footer>
+  </div>
+</div>
+
+<script>
+'use strict';
+// ---------------------------------------------------------------- settings
+const REPO = 'https://github.com/Radiotherapy-Optimization/RadOptLIB';
+const CLASSES = [{ id: 'qp', label: 'QP: convex continuous quadratic programs' }];
+const MAX_FILES = 10, MAX_BYTES = 5e9;              // limits of the in-browser "Download selected" button (instances)
+const solName = r => r.name + '-sol-warmip.h5';
+const withSol = () => $('with-sol').checked;
+const solutions = sel => withSol() ? sel.filter(r => r.sol_url) : [];   // selected instances whose solution is downloaded too
+const SITE_LABEL = { lung: 'Lung', oligomets: 'Oligometastases', prostate: 'Prostate' };
+const SIZE_ORDER = ['small', 'medium', 'large'];
+// Categorical colors are assigned to disease sites in a fixed order (sites sorted by name), so a filter never
+// repaints the survivors. Each site also has its own marker shape, so identity never rests on color alone.
+const SERIES = ['--s1', '--s2', '--s3', '--s4', '--s5', '--s6'];
+const SHAPES = ['circle', 'square', 'triangle', 'diamond', 'circle', 'square'];
+const NUM_COLS = ['type', 'n_vars', 'n_ineq_cons', 'n_eq_cons', 'nnz_Q', 'nnz_G', 'file_size_bytes'];
+const FILTERS = [
+  { key: 'size', title: 'Size class', label: v => v.charAt(0).toUpperCase() + v.slice(1),
+    order: (a, b) => SIZE_ORDER.indexOf(a) - SIZE_ORDER.indexOf(b) },
+  { key: 'disease_site', title: 'Disease site', label: v => siteLabel(v), order: (a, b) => a.localeCompare(b) },
+  { key: 'type', title: 'Type', label: v => 'Type ' + v, order: (a, b) => a - b },
+];
+const COLUMNS = [
+  { key: 'name', title: 'Name' },
+  { key: 'disease_site', title: 'Disease site', text: r => siteLabel(r.disease_site) },
+  { key: 'type', title: 'Type', num: true },
+  { key: 'patient', title: 'Patient' },
+  { key: 'size', title: 'Size', sort: r => SIZE_ORDER.indexOf(r.size) },
+  { key: 'n', title: 'Variables', num: true, text: r => fmt(r.n) },
+  { key: 'm', title: 'Constraints', num: true, text: r => fmt(r.m) },
+  { key: 'nnz_G', title: 'Nonzeros of G', num: true, text: r => fmt(r.nnz_G) },
+  { key: 'file_size_bytes', title: 'File size', num: true, text: r => fmtBytes(r.file_size_bytes) },
+];
+
+// ---------------------------------------------------------------- state
+let rows = [], siteOrder = [], cls = CLASSES[0].id;
+const selected = new Set();
+const active = {};                                    // filter key -> Set of allowed values (as strings)
+let sortKey = 'name', sortDir = 1, hover = null, points = [];
+
+const $ = id => document.getElementById(id);
+const SVG = 'http://www.w3.org/2000/svg';
+const fmt = v => Number(v).toLocaleString('en-US');
+function fmtBytes(b) { return b >= 1e9 ? (b / 1e9).toFixed(2) + ' GB' : Math.max(1, Math.round(b / 1e6)) + ' MB'; }
+function siteLabel(v) { return SITE_LABEL[v] || (v ? v.charAt(0).toUpperCase() + v.slice(1) : ''); }
+function el(tag, attrs, text) {
+  const e = document.createElement(tag);
+  for (const k in (attrs || {})) e.setAttribute(k, attrs[k]);
+  if (text != null) e.textContent = text;               // manifest values are data: textContent, never innerHTML
+  return e;
+}
+function svg(tag, attrs) {
+  const e = document.createElementNS(SVG, tag);
+  for (const k in (attrs || {})) e.setAttribute(k, attrs[k]);
+  return e;
+}
+
+// ---------------------------------------------------------------- manifest
+function parseCsv(text) {
+  const out = []; let row = [], cur = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) {
+      if (ch === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += ch;
+    } else if (ch === '"') q = true;
+    else if (ch === ',') { row.push(cur); cur = ''; }
+    else if (ch === '\n' || ch === '\r') {
+      if (ch === '\r' && text[i + 1] === '\n') i++;
+      row.push(cur); cur = ''; if (row.length > 1 || row[0] !== '') out.push(row); row = [];
+    } else cur += ch;
+  }
+  if (cur !== '' || row.length) { row.push(cur); out.push(row); }
+  const head = out.shift() || [];
+  return out.map(r => { const o = {}; head.forEach((h, i) => { o[h] = r[i] == null ? '' : r[i]; }); return o; });
+}
+
+async function loadClass(id) {
+  cls = id;
+  const url = '../manifest/' + id + '.csv';
+  $('lnk-manifest').href = url;
+  $('lnk-format').href = REPO + '/blob/main/docs/' + id + '.md';
+  $('lnk-read').href = REPO + '/blob/main/docs/' + id + '.md#reading-a-file';
+  let text;
+  try {
+    const resp = await fetch(url, { cache: 'no-cache' });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    text = await resp.text();
+  } catch (e) {
+    const box = $('error');
+    box.hidden = false; $('app').hidden = true; box.textContent = '';
+    box.append(el('b', null, 'The manifest could not be loaded. '),
+      'If you opened this page from a file on your computer, start a local web server in the repository folder ' +
+      '(python -m http.server) and open http://localhost:8000/dashboard/ instead. (' + e.message + ')');
+    return;
+  }
+  rows = parseCsv(text).filter(r => r.name);
+  rows.forEach(r => NUM_COLS.forEach(k => { if (r[k] !== '' && r[k] != null) r[k] = Number(r[k]); }));
+  rows.forEach(r => { r.n = r.n_vars; r.m = r.n_ineq_cons; });       // short names used below
+  siteOrder = [...new Set(rows.map(r => r.disease_site))].sort();
+  selected.clear();
+  buildFilters(); buildLegend(); buildHead();
+  $('error').hidden = true; $('app').hidden = false;
+  update();
+}
+
+// ---------------------------------------------------------------- filters
+function buildFilters() {
+  const host = $('filters');
+  host.querySelectorAll('fieldset').forEach(f => f.remove());
+  for (const f of FILTERS) {
+    const values = [...new Set(rows.map(r => String(r[f.key])))].filter(v => v !== '' && v !== 'undefined').sort(f.order);
+    active[f.key] = new Set(values);
+    const fs = el('fieldset'); fs.append(el('legend', null, f.title));
+    const box = el('div', { class: 'checks' });
+    for (const v of values) {
+      const lab = el('label');
+      const cb = el('input', { type: 'checkbox' }); cb.checked = true;
+      cb.addEventListener('change', () => { cb.checked ? active[f.key].add(v) : active[f.key].delete(v); update(); });
+      const count = rows.filter(r => String(r[f.key]) === v).length;
+      lab.append(cb, f.label(v) + ' ', el('span', { class: 'n' }, '(' + count + ')'));
+      box.append(lab);
+    }
+    fs.append(box); host.append(fs);
+  }
+}
+function passes(r) { return FILTERS.every(f => active[f.key].has(String(r[f.key]))); }
+function resetFilters() { buildFilters(); update(); }
+
+// ---------------------------------------------------------------- markers
+function seriesVar(site) { return 'var(' + SERIES[Math.min(siteOrder.indexOf(site), SERIES.length - 1)] + ')'; }
+function shapeOf(site) { return SHAPES[Math.min(siteOrder.indexOf(site), SHAPES.length - 1)]; }
+function markerPath(shape, x, y, r) {
+  if (shape === 'square') { const s = r * 0.9; return `M${x - s},${y - s}h${2 * s}v${2 * s}h${-2 * s}z`; }
+  if (shape === 'triangle') { const s = r * 1.15; return `M${x},${y - s}L${x + s},${y + s * 0.8}L${x - s},${y + s * 0.8}z`; }
+  if (shape === 'diamond') { const s = r * 1.2; return `M${x},${y - s}L${x + s},${y}L${x},${y + s}L${x - s},${y}z`; }
+  return `M${x - r},${y}a${r},${r} 0 1,0 ${2 * r},0a${r},${r} 0 1,0 ${-2 * r},0z`;
+}
+function swatch(site) {
+  const s = svg('svg', { viewBox: '0 0 14 14', 'aria-hidden': 'true' });
+  s.append(svg('path', { d: markerPath(shapeOf(site), 7, 7, 5), fill: seriesVar(site) }));
+  return s;
+}
+function buildLegend() {
+  const host = $('legend'); host.textContent = '';
+  for (const site of siteOrder) {
+    const item = el('span'); item.append(swatch(site), siteLabel(site)); host.append(item);
+  }
+  const sel = el('span'); const s = svg('svg', { viewBox: '0 0 14 14', 'aria-hidden': 'true' });
+  s.append(svg('circle', { cx: 7, cy: 7, r: 5, fill: 'none', stroke: 'var(--ink)', 'stroke-width': 2 }));
+  sel.append(s, 'selected'); host.append(sel);
+  const hid = el('span'); const h = svg('svg', { viewBox: '0 0 14 14', 'aria-hidden': 'true' });
+  h.append(svg('circle', { cx: 7, cy: 7, r: 4, fill: 'var(--axis)' }));
+  hid.append(h, 'hidden by the filters'); host.append(hid);
+}
+
+// ---------------------------------------------------------------- plot
+const PW = 720, PH = 450, ML = 62, MR = 14, MT = 12, MB = 46;
+function niceTicks(lo, hi) {
+  const out = [];
+  for (let e = Math.floor(Math.log10(lo)); e <= Math.ceil(Math.log10(hi)); e++)
+    for (const k of [1, 2, 5]) { const v = k * Math.pow(10, e); if (v >= lo && v <= hi) out.push(v); }
+  return out;
+}
+function tickLabel(v) { return v >= 1e6 ? (v / 1e6) + 'M' : v >= 1e3 ? (v / 1e3) + 'k' : String(v); }
+function drawPlot(shown) {
+  const plot = $('plot'); plot.textContent = '';
+  if (!rows.length) return;
+  const ns = rows.map(r => r.n), ms = rows.map(r => r.m);
+  const x0 = Math.min(...ns) / 1.6, x1 = Math.max(...ns) * 1.6, y0 = Math.min(...ms) / 1.6, y1 = Math.max(...ms) * 1.6;
+  const lx = v => ML + (Math.log(v) - Math.log(x0)) / (Math.log(x1) - Math.log(x0)) * (PW - ML - MR);
+  const ly = v => PH - MB - (Math.log(v) - Math.log(y0)) / (Math.log(y1) - Math.log(y0)) * (PH - MT - MB);
+
+  for (const v of niceTicks(x0, x1)) {
+    plot.append(svg('line', { x1: lx(v), x2: lx(v), y1: MT, y2: PH - MB, stroke: 'var(--grid)', 'stroke-width': 1 }));
+    const t = svg('text', { x: lx(v), y: PH - MB + 16, 'text-anchor': 'middle', class: 'tick' }); t.textContent = tickLabel(v); plot.append(t);
+  }
+  for (const v of niceTicks(y0, y1)) {
+    plot.append(svg('line', { x1: ML, x2: PW - MR, y1: ly(v), y2: ly(v), stroke: 'var(--grid)', 'stroke-width': 1 }));
+    const t = svg('text', { x: ML - 8, y: ly(v) + 4, 'text-anchor': 'end', class: 'tick' }); t.textContent = tickLabel(v); plot.append(t);
+  }
+  plot.append(svg('line', { x1: ML, x2: PW - MR, y1: PH - MB, y2: PH - MB, stroke: 'var(--axis)' }));
+  plot.append(svg('line', { x1: ML, x2: ML, y1: MT, y2: PH - MB, stroke: 'var(--axis)' }));
+  const xt = svg('text', { x: (ML + PW - MR) / 2, y: PH - 8, 'text-anchor': 'middle', class: 'axis-title' });
+  xt.textContent = 'Variables (n), log scale'; plot.append(xt);
+  const yt = svg('text', { x: 14, y: (MT + PH - MB) / 2, 'text-anchor': 'middle', class: 'axis-title',
+                           transform: `rotate(-90 14 ${(MT + PH - MB) / 2})` });
+  yt.textContent = 'Constraints (m), log scale'; plot.append(yt);
+
+  // size-class boundaries: n + m = 100,000 and n + m = 500,000
+  const clip = svg('clipPath', { id: 'clip' });
+  clip.append(svg('rect', { x: ML, y: MT, width: PW - ML - MR, height: PH - MT - MB })); plot.append(clip);
+  for (const T of [1e5, 5e5]) {
+    let d = '';
+    for (let i = 0; i <= 80; i++) {
+      const n = Math.exp(Math.log(x0) + i / 80 * (Math.log(Math.min(x1, T * 0.9999)) - Math.log(x0)));
+      const m = T - n; if (m <= 0) break;
+      d += (d ? 'L' : 'M') + lx(n).toFixed(1) + ',' + ly(Math.max(m, y0 / 10)).toFixed(1);
+    }
+    plot.append(svg('path', { d, fill: 'none', stroke: 'var(--axis)', 'stroke-width': 1.25, 'stroke-dasharray': '5 4',
+                              'clip-path': 'url(#clip)' }));
+  }
+  const regions = [['small', Math.sqrt(y0 * 1e5)], ['medium', Math.sqrt(1e5 * 5e5)], ['large', Math.sqrt(5e5 * y1)]];
+  for (const [name, m] of regions) {
+    if (m < y0 || m > y1) continue;
+    const t = svg('text', { x: ML + 8, y: ly(m) + 4, class: 'region' }); t.textContent = name; plot.append(t);
+  }
+
+  const shownSet = new Set(shown.map(r => r.name));
+  points = [];
+  const layerHidden = svg('g'), layerShown = svg('g'), layerSel = svg('g');
+  for (const r of rows) {
+    const x = lx(r.n), y = ly(r.m);
+    if (!shownSet.has(r.name)) { layerHidden.append(svg('circle', { cx: x, cy: y, r: 3, fill: 'var(--axis)', opacity: .55 })); continue; }
+    points.push({ r, x, y });
+    const isSel = selected.has(r.name);
+    const mark = svg('path', { d: markerPath(shapeOf(r.disease_site), x, y, 4.6), fill: seriesVar(r.disease_site),
+                               stroke: 'var(--surface)', 'stroke-width': 1.5, opacity: selected.size && !isSel ? .5 : 1 });
+    (isSel ? layerSel : layerShown).append(mark);
+    if (isSel) layerSel.append(svg('circle', { cx: x, cy: y, r: 8, fill: 'none', stroke: 'var(--ink)', 'stroke-width': 2 }));
+  }
+  plot.append(layerHidden, layerShown, layerSel, svg('circle', { id: 'hover-ring', r: 10, fill: 'none', stroke: 'var(--ink-2)',
+                                                                 'stroke-width': 1.5, visibility: 'hidden' }));
+}
+function nearest(ev) {
+  const rect = $('plot').getBoundingClientRect(), k = rect.width / PW;
+  let best = null, bd = 24;                               // hit target: nearest point within 24 px
+  for (const p of points) {
+    const d = Math.hypot(rect.left + p.x * k - ev.clientX, rect.top + p.y * k - ev.clientY);
+    if (d < bd) { bd = d; best = p; }
+  }
+  return best;
+}
+function showTip(p, ev) {
+  const tip = $('tip'), ring = document.getElementById('hover-ring');
+  if (!p) { tip.style.display = 'none'; if (ring) ring.setAttribute('visibility', 'hidden'); hover = null; return; }
+  if (ring) { ring.setAttribute('cx', p.x); ring.setAttribute('cy', p.y); ring.setAttribute('visibility', 'visible'); }
+  if (hover !== p.r.name) {
+    hover = p.r.name; tip.textContent = '';
+    const name = el('div', { class: 'name' }); name.append(swatch(p.r.disease_site), p.r.name); tip.append(name);
+    const dl = el('dl');
+    const add = (k, v) => { if (v !== '' && v != null) dl.append(el('dt', null, k), el('dd', null, v)); };
+    add('Disease site', siteLabel(p.r.disease_site)); add('Type', String(p.r.type)); add('Patient', p.r.patient);
+    add('Protocol', p.r.protocol); add('Size class', p.r.size);
+    add('Variables', fmt(p.r.n)); add('Constraints', fmt(p.r.m));
+    add('Nonzeros of Q', fmt(p.r.nnz_Q)); add('Nonzeros of G', fmt(p.r.nnz_G)); add('File size', fmtBytes(p.r.file_size_bytes));
+    tip.append(dl);
+  }
+  tip.style.display = 'block';
+  const box = $('plotbox').getBoundingClientRect();
+  let left = ev.clientX - box.left + 14, top = ev.clientY - box.top + 14;
+  if (left + tip.offsetWidth > box.width) left = ev.clientX - box.left - tip.offsetWidth - 14;
+  if (top + tip.offsetHeight > box.height) top = Math.max(0, box.height - tip.offsetHeight);
+  tip.style.left = Math.max(0, left) + 'px'; tip.style.top = top + 'px';
+}
+
+// ---------------------------------------------------------------- table
+function buildHead() {
+  const tr = $('thead'); tr.textContent = '';
+  const th0 = el('th'); const all = el('input', { type: 'checkbox', id: 'check-all', 'aria-label': 'Select all shown instances' });
+  all.addEventListener('change', () => { for (const r of rows.filter(passes)) all.checked ? selected.add(r.name) : selected.delete(r.name); update(); });
+  th0.append(all); tr.append(th0);
+  for (const c of COLUMNS) {
+    const th = el('th', c.num ? { class: 'num' } : {});
+    const b = el('button', { type: 'button' }, c.title);
+    b.addEventListener('click', () => { if (sortKey === c.key) sortDir = -sortDir; else { sortKey = c.key; sortDir = 1; } update(); });
+    th.append(b, el('span', { class: 'arrow', 'data-key': c.key }));
+    tr.append(th);
+  }
+  tr.append(el('th', null, 'Download'));
+}
+function drawTable(shown) {
+  const col = COLUMNS.find(c => c.key === sortKey);
+  const val = r => col.sort ? col.sort(r) : r[sortKey];
+  shown.sort((a, b) => { const x = val(a), y = val(b);
+    return ((typeof x === 'number' && typeof y === 'number') ? x - y : String(x).localeCompare(String(y))) * sortDir
+           || a.name.localeCompare(b.name); });
+  document.querySelectorAll('thead .arrow').forEach(a => {
+    a.textContent = a.dataset.key === sortKey ? (sortDir > 0 ? '▲' : '▼') : '';
+    a.parentElement.setAttribute('aria-sort', a.dataset.key === sortKey ? (sortDir > 0 ? 'ascending' : 'descending') : 'none');
+  });
+  const body = $('tbody'); body.textContent = '';
+  const frag = document.createDocumentFragment();
+  for (const r of shown) {
+    const tr = el('tr', selected.has(r.name) ? { class: 'sel' } : {});
+    const td0 = el('td'); const cb = el('input', { type: 'checkbox', 'aria-label': 'Select ' + r.name }); cb.checked = selected.has(r.name);
+    cb.addEventListener('change', () => { cb.checked ? selected.add(r.name) : selected.delete(r.name); update(); });
+    td0.append(cb); tr.append(td0);
+    for (const c of COLUMNS) {
+      const td = el('td', c.num ? { class: 'num' } : {});
+      if (c.key === 'disease_site') { const d = el('span', { class: 'dot' }); d.append(swatch(r.disease_site)); td.append(d); }
+      td.append(c.text ? c.text(r) : String(r[c.key]));
+      tr.append(td);
+    }
+    const td = el('td');
+    if (r.url) td.append(el('a', { href: r.url, rel: 'noopener' }, 'HDF5')); else td.append(el('span', { class: 'na' }, 'not yet available'));
+    if (r.sol_url) td.append(' · ', el('a', { href: r.sol_url, rel: 'noopener' }, 'solution'));
+    tr.append(td); frag.append(tr);
+  }
+  body.append(frag);
+  $('empty').hidden = shown.length > 0;
+  const all = $('check-all'), nSel = shown.filter(r => selected.has(r.name)).length;
+  all.checked = shown.length > 0 && nSel === shown.length; all.indeterminate = nSel > 0 && nSel < shown.length;
+}
+
+// ---------------------------------------------------------------- download panel
+function selection() { return rows.filter(r => selected.has(r.name)).sort((a, b) => a.name.localeCompare(b.name)); }
+// Download scripts: one "fetch" line per file (name, size in bytes, address). A file whose size already matches is
+// skipped; otherwise curl continues it (-C -). The size is checked again afterwards.
+function scriptHeader(sel, c) {
+  const bytes = sel.reduce((s, r) => s + r.file_size_bytes, 0);
+  const ns = solutions(sel).length;
+  return [`${c} RadOptLIB download script: ${sel.length} instance${sel.length > 1 ? 's' : ''} (${fmtBytes(bytes)})${ns ? ' and ' + ns + ' reference solution' + (ns > 1 ? 's' : '') : ''}.`,
+          `${c} Made by the RadOptLIB dashboard on ${new Date().toISOString().slice(0, 10)}.`,
+          `${c} The files are saved in the folder that holds this script. The script can be run again:`,
+          `${c} complete files are skipped and interrupted downloads are resumed.`];
+}
+function scriptSh(sel) {
+  const q = t => "'" + String(t).replace(/'/g, "'\\''") + "'";
+  return ['#!/bin/sh', ...scriptHeader(sel, '#'), '# Run it with:  sh radoptlib-download.sh', '',
+    'cd "$(dirname "$0")" || exit 1',
+    'command -v curl >/dev/null 2>&1 || { echo "curl was not found; please install it first."; exit 1; }',
+    'failed=""',
+    'size_of() { if [ -f "$1" ]; then wc -c < "$1" | tr -d " "; else echo 0; fi; }',
+    'fetch() {',
+    '  if [ "$(size_of "$1")" = "$2" ]; then echo "$1: already complete"; return; fi',
+    '  echo "$1"',
+    '  curl -f -L -C - --retry 5 -o "$1" "$3"',
+    '  if [ "$(size_of "$1")" != "$2" ]; then failed="$failed $1"; fi',
+    '}',
+    'fetch_small() {',
+    '  if [ -f "$1" ]; then echo "$1: already there"; return; fi',
+    '  echo "$1"',
+    '  if curl -f -L --retry 5 -o "$1.part" "$2"; then mv "$1.part" "$1"; else rm -f "$1.part"; failed="$failed $1"; fi',
+    '}', '',
+    ...sel.map(r => `fetch ${q(r.name + '.h5')} ${r.file_size_bytes} ${q(r.url)}`),
+    ...solutions(sel).map(r => `fetch_small ${q(solName(r))} ${q(r.sol_url)}`), '',
+    'if [ -n "$failed" ]; then',
+    '  echo "Not completed:$failed"',
+    '  echo "Run the script again to continue."',
+    '  exit 1',
+    'fi',
+    'echo "All files are complete."', ''].join('\n');
+}
+function scriptBat(sel) {
+  const q = t => '"' + String(t).replace(/%/g, '%%') + '"';
+  return ['@echo off', ...scriptHeader(sel, 'rem'), 'rem Run it with a double-click, or from the Command Prompt.', '',
+    'setlocal',
+    'cd /d "%~dp0"',
+    'where curl.exe >nul 2>nul',
+    'if errorlevel 1 (',
+    '  echo curl.exe was not found. It is part of Windows 10 version 1803 and later.',
+    '  pause',
+    '  exit /b 1',
+    ')',
+    'set "FAILED="', '',
+    ...sel.map(r => `call :fetch ${q(r.name + '.h5')} ${r.file_size_bytes} ${q(r.url)}`),
+    ...solutions(sel).map(r => `call :fetchsmall ${q(solName(r))} ${q(r.sol_url)}`), '',
+    'echo.',
+    'if defined FAILED (',
+    '  echo Not completed:%FAILED%',
+    '  echo Run the script again to continue.',
+    ') else (',
+    '  echo All files are complete.',
+    ')',
+    'pause',
+    'exit /b', '',
+    ':fetch',
+    'for %%A in ("%~1") do if "%%~zA"=="%~2" (',
+    '  echo %~1: already complete',
+    '  exit /b',
+    ')',
+    'echo %~1',
+    'curl.exe -f -L -C - --retry 5 -o "%~1" %3',
+    'for %%A in ("%~1") do if not "%%~zA"=="%~2" set "FAILED=%FAILED% %~1"',
+    'exit /b', '',
+    ':fetchsmall',
+    'if exist "%~1" (',
+    '  echo %~1: already there',
+    '  exit /b',
+    ')',
+    'echo %~1',
+    'curl.exe -f -L --retry 5 -o "%~1.part" %2',
+    'if errorlevel 1 (',
+    '  if exist "%~1.part" del "%~1.part"',
+    '  set "FAILED=%FAILED% %~1"',
+    ') else (',
+    '  move /y "%~1.part" "%~1" >nul',
+    ')',
+    'exit /b', ''].join('\r\n');
+}
+function drawDownload() {
+  const sel = selection(), bytes = sel.reduce((s, r) => s + r.file_size_bytes, 0);
+  const hasUrl = sel.length > 0 && sel.every(r => r.url);
+  const anyUrl = rows.some(r => r.url);
+  const btn = $('btn-dl'), note = $('dl-note');
+  btn.textContent = sel.length ? `Download ${sel.length} instance${sel.length > 1 ? 's' : ''} (${fmtBytes(bytes)})` : 'Download selected';
+  const tooMany = sel.length > MAX_FILES || bytes > MAX_BYTES;
+  btn.disabled = !hasUrl || tooMany;
+  if (!sel.length) note.textContent = 'Select instances with the checkboxes in the table, or by clicking points in the plot.';
+  else if (!anyUrl) note.textContent = 'Downloads are not yet available: the files are not on Harvard Dataverse yet. The download script will work once they are.';
+  else if (!hasUrl) note.textContent = 'Some selected instances have no download address yet.';
+  else if (tooMany) note.textContent = `The button downloads up to ${MAX_FILES} instances or ${fmtBytes(MAX_BYTES)} at a time, because browsers handle many large downloads poorly. For this selection, use the download script below.`;
+  else note.textContent = 'Your browser may ask for permission to download several files. For larger selections, use the download script below.';
+
+  $('btn-bat').disabled = !hasUrl; $('btn-sh').disabled = !hasUrl;
+  $('btn-urls').disabled = !hasUrl;
+  $('btn-md5').disabled = !(sel.length > 0 && sel.every(r => r.md5));
+  $('with-sol').disabled = !rows.some(r => r.sol_url);
+}
+function saveText(name, text) {
+  const a = el('a', { href: URL.createObjectURL(new Blob([text], { type: 'text/plain' })), download: name });
+  document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+async function downloadSelected() {
+  const sel = selection(), btn = $('btn-dl');
+  const files = sel.map(r => [r.name + '.h5', r.url]).concat(solutions(sel).map(r => [solName(r), r.sol_url]));
+  btn.disabled = true;
+  for (let i = 0; i < files.length; i++) {
+    btn.textContent = `Starting ${i + 1} of ${files.length}…`;
+    const a = el('a', { href: files[i][1], download: files[i][0], rel: 'noopener' });
+    document.body.append(a); a.click(); a.remove();
+    await new Promise(res => setTimeout(res, 1500));
+  }
+  drawDownload();
+}
+
+// ---------------------------------------------------------------- update
+function update() {
+  const shown = rows.filter(passes);
+  const sel = selection(), hidden = sel.filter(r => !passes(r)).length;
+  $('t-shown').textContent = fmt(shown.length);
+  $('t-shown-of').textContent = 'of ' + fmt(rows.length) + ' instances shown';
+  $('t-sel').textContent = fmt(sel.length);
+  $('t-size').textContent = sel.length ? fmtBytes(sel.reduce((s, r) => s + r.file_size_bytes, 0)) : '0 GB';
+  $('t-hidden').textContent = hidden ? `${hidden} selected instance${hidden > 1 ? 's are' : ' is'} hidden by the filters` : '';
+  $('btn-none').disabled = sel.length === 0;
+  drawPlot(shown); drawTable(shown); drawDownload();
+}
+
+// ---------------------------------------------------------------- wiring
+const classSel = $('class');
+for (const c of CLASSES) classSel.append(el('option', { value: c.id }, c.label));
+classSel.addEventListener('change', () => loadClass(classSel.value));
+$('btn-all').addEventListener('click', () => { rows.filter(passes).forEach(r => selected.add(r.name)); update(); });
+$('btn-none').addEventListener('click', () => { selected.clear(); update(); });
+$('btn-reset').addEventListener('click', resetFilters);
+$('btn-dl').addEventListener('click', downloadSelected);
+$('btn-bat').addEventListener('click', () => saveText('radoptlib-download.bat', scriptBat(selection())));
+$('btn-sh').addEventListener('click', () => saveText('radoptlib-download.sh', scriptSh(selection())));
+$('btn-urls').addEventListener('click', () => { const sel = selection();
+  saveText('radoptlib-addresses.txt', sel.map(r => r.url).concat(solutions(sel).map(r => r.sol_url)).join('\n') + '\n'); });
+$('btn-md5').addEventListener('click', () => { const sel = selection();
+  saveText('radoptlib-checksums.md5', sel.map(r => r.md5 + '  ' + r.name + '.h5').concat(solutions(sel).filter(r => r.sol_md5).map(r => r.sol_md5 + '  ' + solName(r))).join('\n') + '\n'); });
+$('with-sol').addEventListener('change', drawDownload);
+const plotEl = $('plot');
+plotEl.addEventListener('pointermove', ev => showTip(nearest(ev), ev));
+plotEl.addEventListener('pointerleave', () => showTip(null));
+plotEl.addEventListener('click', ev => { const p = nearest(ev); if (p) { selected.has(p.r.name) ? selected.delete(p.r.name) : selected.add(p.r.name); hover = null; update(); showTip(nearest(ev), ev); } });
+loadClass(cls);
+</script>
+</body>
+</html>

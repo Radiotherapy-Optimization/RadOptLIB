@@ -6,6 +6,7 @@ CLAUDE.md
 
 # Problem instances are hosted on Harvard Dataverse, not in git
 *.h5
+!examples/*.h5
 *.mps
 *.mps.gz
 

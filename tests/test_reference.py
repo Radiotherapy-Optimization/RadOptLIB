@@ -28,7 +28,7 @@ def test_load_solution_by_path_and_name(tmp_path, monkeypatch, qp_file, qp):
                         'dual_upper_bound'}                                               # no stored residuals
     assert np.array_equal(sol['x'], qp['x']) and np.array_equal(sol['dual_ineq_cons'], qp['y'])
     assert np.array_equal(sol['dual_lower_bound'], qp['zl']) and np.array_equal(sol['dual_upper_bound'], qp['zu'])
-    assert radoptlib.verify_solution(p, sol['x'], sol['dual_ineq_cons'], sol['dual_lower_bound'],
+    assert radoptlib.evaluate_solution(p, sol['x'], sol['dual_ineq_cons'], sol['dual_lower_bound'],
                                      sol['dual_upper_bound'], tol=1e-9)['ok']
 
     monkeypatch.setenv('RADOPTLIB_DATA', str(tmp_path))

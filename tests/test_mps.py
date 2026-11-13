@@ -87,5 +87,5 @@ def test_mps_highs(tmp_path, qp_file, qp):
     h.run()
     x = np.array(h.getSolution().col_value)
     assert h.getInfo().objective_function_value == pytest.approx(p.objective(qp['x']), rel=1e-6)
-    assert radoptlib.verify_solution(p, x)['primal_res'] < 1e-7
+    assert radoptlib.evaluate_solution(p, x)['primal_res'] < 1e-7
     assert np.array_equal(np.array(h.getLp().col_lower_), np.maximum(p.l, -highspy.kHighsInf))

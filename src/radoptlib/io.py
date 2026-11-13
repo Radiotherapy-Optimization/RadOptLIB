@@ -219,8 +219,8 @@ def load_solution(name_or_path, solver='warmip'):
 
     Returns a dict with name, x (length n), dual_ineq_cons (length m, multipliers of Gx <= h),
     dual_lower_bound and dual_upper_bound (length n, multipliers of x >= l and x <= u), solver and
-    format_note. Reference solutions come from a numerical solver and are not guaranteed to be optimal;
-    check one with verify_solution(load(name), sol['x'], sol['dual_ineq_cons'], sol['dual_lower_bound'],
+    format_note. Evaluate a reference solution with
+    evaluate_solution(load(name), sol['x'], sol['dual_ineq_cons'], sol['dual_lower_bound'],
     sol['dual_upper_bound'])."""
     path = Path(name_or_path)
     if not (path.suffix == '.h5' and path.exists()):

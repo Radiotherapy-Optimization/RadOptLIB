@@ -25,47 +25,47 @@ def test_load_file_without_bounds(tmp_path, qp):
     assert p.info['type'] == '1'                          # parsed from the data_note text
 
 
-def test_verify_solution_at_optimum(qp_file, qp):
+def test_evaluate_solution_at_optimum(qp_file, qp):
     p = radoptlib.load(qp_file)
-    r = radoptlib.verify_solution(p, qp['x'], qp['y'], qp['zl'], qp['zu'], tol=1e-9)
+    r = radoptlib.evaluate_solution(p, qp['x'], qp['y'], qp['zl'], qp['zu'], tol=1e-9)
     assert r['ok'], r
     assert r['primal_res'] < 1e-12 and r['dual_res'] < 1e-12 and r['gap'] < 1e-12 and r['dual_infeas'] == 0
 
 
-def test_verify_solution_detects_errors(qp_file, qp):
+def test_evaluate_solution_detects_errors(qp_file, qp):
     p = radoptlib.load(qp_file)
-    r = radoptlib.verify_solution(p, qp['x'] + 1.0, qp['y'], qp['zl'], qp['zu'], tol=1e-6)
+    r = radoptlib.evaluate_solution(p, qp['x'] + 1.0, qp['y'], qp['zl'], qp['zu'], tol=1e-6)
     assert not r['ok'] and r['dual_res'] > 1e-6
-    r = radoptlib.verify_solution(p, qp['x'], -np.ones(p.m), qp['zl'], qp['zu'], tol=1e-6)
+    r = radoptlib.evaluate_solution(p, qp['x'], -np.ones(p.m), qp['zl'], qp['zu'], tol=1e-6)
     assert not r['ok'] and r['dual_infeas'] == 1.0
-    r = radoptlib.verify_solution(p, qp['x'], qp['y'], qp['zl'], None, tol=1e-6)    # dual_upper_bound left out
+    r = radoptlib.evaluate_solution(p, qp['x'], qp['y'], qp['zl'], None, tol=1e-6)    # dual_upper_bound left out
     assert not r['ok'] and r['dual_res'] > 1e-6
     zl = qp['zl'].copy()
     zl[10] = 0.5                                              # multiplier on a missing bound
-    assert radoptlib.verify_solution(p, qp['x'], qp['y'], zl, qp['zu'])['dual_infeas'] == 0.5
+    assert radoptlib.evaluate_solution(p, qp['x'], qp['y'], zl, qp['zu'])['dual_infeas'] == 0.5
 
 
-def test_verify_solution_bound_violation(qp_file, qp):
+def test_evaluate_solution_bound_violation(qp_file, qp):
     p = radoptlib.load(qp_file)
     x = qp['x'].copy()
     x[0] -= 1e-3                                              # below its lower bound
-    assert radoptlib.verify_solution(p, x)['primal_res'] > 1e-5
+    assert radoptlib.evaluate_solution(p, x)['primal_res'] > 1e-5
     x = qp['x'].copy()
     x[5] += 1e-3                                              # above its upper bound
-    assert radoptlib.verify_solution(p, x)['primal_res'] > 1e-5
+    assert radoptlib.evaluate_solution(p, x)['primal_res'] > 1e-5
 
 
-def test_verify_solution_primal_only(qp_file, qp):
+def test_evaluate_solution_primal_only(qp_file, qp):
     p = radoptlib.load(qp_file)
-    r = radoptlib.verify_solution(p, qp['x'])
+    r = radoptlib.evaluate_solution(p, qp['x'])
     assert set(r) == {'objective', 'primal_res'} and r['primal_res'] < 1e-12
-    bad = radoptlib.verify_solution(p, qp['x'] * 0 + 1e6)
+    bad = radoptlib.evaluate_solution(p, qp['x'] * 0 + 1e6)
     assert bad['primal_res'] > 0
 
 
-def test_verify_solution_wrong_length(qp_file, qp):
+def test_evaluate_solution_wrong_length(qp_file, qp):
     p = radoptlib.load(qp_file)
     with pytest.raises(ValueError):
-        radoptlib.verify_solution(p, np.zeros(p.n + 1))
+        radoptlib.evaluate_solution(p, np.zeros(p.n + 1))
     with pytest.raises(ValueError):
-        radoptlib.verify_solution(p, qp['x'], qp['y'], np.zeros(p.n - 1))
+        radoptlib.evaluate_solution(p, qp['x'], qp['y'], np.zeros(p.n - 1))

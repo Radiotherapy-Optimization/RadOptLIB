@@ -1,0 +1,59 @@
+# Builds the stand-alone radoptlib2mps program for Windows, Linux and macOS from the Python code in src/.
+# Runs when a release is published (the three programs are attached to it) or when started by hand from
+# the Actions tab (the programs are then available as artifacts of the run).
+name: Build radoptlib2mps
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            built: radoptlib2mps.exe
+            asset: radoptlib2mps-windows-x64.exe
+          - os: ubuntu-22.04
+            built: radoptlib2mps
+            asset: radoptlib2mps-linux-x64
+          - os: macos-latest
+            built: radoptlib2mps
+            asset: radoptlib2mps-macos-arm64
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install
+        run: python -m pip install . pytest pyinstaller
+      - name: Tests
+        run: python -m pytest -q
+      - name: Build
+        run: pyinstaller mps/radoptlib2mps.spec
+      - name: Try the program on a small synthetic instance
+        run: |
+          python -c "import sys; sys.path.insert(0, 'tests'); from conftest import make_qp, write_h5; import os; os.makedirs('smoke', exist_ok=True); write_h5('smoke/rt-qp-0001.h5', make_qp(), name='rt-qp-0001')"
+          ./dist/${{ matrix.built }} --version
+          ./dist/${{ matrix.built }} smoke
+          python -c "import gzip; assert gzip.open('smoke/rt-qp-0001.mps.gz').read().startswith(b'NAME rt-qp-0001')"
+          mv dist/${{ matrix.built }} dist/${{ matrix.asset }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: dist/${{ matrix.asset }}
+      - name: Attach to the release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" "dist/${{ matrix.asset }}" --clobber

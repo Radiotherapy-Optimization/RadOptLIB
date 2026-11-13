@@ -27,14 +27,14 @@ def _vec(v, size, what):
     return v
 
 
-def verify_solution(problem, x, dual_ineq_cons=None, dual_lower_bound=None, dual_upper_bound=None, tol=None):
+def evaluate_solution(problem, x, dual_ineq_cons=None, dual_lower_bound=None, dual_upper_bound=None, tol=None):
     """Residuals of a primal point x and (optionally) multipliers.
 
     Returns a dict with objective and primal_res and, when any multiplier is given, dual_res, gap and
     dual_infeas (multipliers not given count as zero). With tol, adds 'ok' = every reported
     residual <= tol. Example with a reference solution:
         sol = load_solution(name)
-        verify_solution(load(name), sol['x'], sol['dual_ineq_cons'], sol['dual_lower_bound'],
+        evaluate_solution(load(name), sol['x'], sol['dual_ineq_cons'], sol['dual_lower_bound'],
                         sol['dual_upper_bound'])"""
     n, m = problem.n, problem.m
     x = _vec(x, n, 'x')

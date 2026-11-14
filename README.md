@@ -4,7 +4,7 @@
 [![Code license: MIT](https://img.shields.io/badge/code%20license-MIT-green)](LICENSE)
 [![Data license: CC BY 4.0](https://img.shields.io/badge/data%20license-CC%20BY%204.0-lightgrey)](LICENSE-DATA.md)
 
-[Quick start](#quick-start) · [Dashboard](https://radiotherapy-optimization.github.io/RadOptLIB/dashboard/) · [Python notebook](examples/quickstart.ipynb) ·
+[Dashboard](https://radiotherapy-optimization.github.io/RadOptLIB/dashboard/) · [Quick start](#quick-start) · [Python notebook](examples/quickstart.ipynb) ·
 [Documentation](docs/qp.md) · [MPS converter](docs/mps.md) · [How to cite](#citation)
 
 RadOptLIB provides large-scale optimization problems from cancer radiotherapy for benchmarking

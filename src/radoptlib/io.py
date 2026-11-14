@@ -214,8 +214,8 @@ def load(name_or_path):
 
 def load_solution(name_or_path, solver='warmip'):
     """Load a reference solution: a local <name>-sol-<solver>.h5 path, or an instance name looked up as
-    data_dir()/<name>-sol-<solver>.h5 (solver: lowercase name, default 'warmip'). For the default solver a
-    missing file is downloaded from the manifest's sol_url (checked against sol_md5) on first use.
+    data_dir()/<name>-sol-<solver>.h5 (solver: lowercase name, default 'warmip'). A missing file is
+    downloaded on first use from the manifest column sol_<solver>_url (checked against sol_<solver>_md5).
 
     Returns a dict with name, x (length n), dual_ineq_cons (length m, multipliers of Gx <= h),
     dual_lower_bound and dual_upper_bound (length n, multipliers of x >= l and x <= u), solver and
@@ -225,13 +225,17 @@ def load_solution(name_or_path, solver='warmip'):
     path = Path(name_or_path)
     if not (path.suffix == '.h5' and path.exists()):
         path = data_dir() / '{}-sol-{}.h5'.format(name_or_path, solver)
-        row = info(str(name_or_path)) if solver == 'warmip' and not path.exists() else {}
-        if not path.exists() and row.get('sol_url'):
+        try:
+            row = info(str(name_or_path)) if not path.exists() else {}
+        except KeyError:                                    # not a manifest instance: no download, file must exist
+            row = {}
+        url, md5 = row.get('sol_{}_url'.format(solver)), row.get('sol_{}_md5'.format(solver))
+        if not path.exists() and url:
             part = path.with_suffix('.h5.part')
             print('downloading the {} reference solution of {}'.format(solver, name_or_path), flush=True)
-            with urllib.request.urlopen(row['sol_url'], timeout=60) as resp, open(part, 'wb') as out:
+            with urllib.request.urlopen(url, timeout=60) as resp, open(part, 'wb') as out:
                 shutil.copyfileobj(resp, out, length=1 << 24)
-            if row.get('sol_md5') and _md5(part) != row['sol_md5']:
+            if md5 and _md5(part) != md5:
                 part.unlink()
                 raise RuntimeError('md5 mismatch for the solution of {} -- download removed, please retry'
                                    .format(name_or_path))

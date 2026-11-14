@@ -1,7 +1,11 @@
 # RadOptLIB: A Benchmark Library of Radiotherapy Optimization Problems
 
-[Dashboard](https://radiotherapy-optimization.github.io/RadOptLIB/dashboard/) · [Python quick start](examples/quickstart.ipynb) · [Documentation](docs/qp.md) ·
-[MPS converter](mps/README.md) · [How to cite](#citation)
+[![Data on Harvard Dataverse](https://img.shields.io/badge/data-Harvard%20Dataverse-blue)](https://doi.org/10.7910/DVN/W38OB6)
+[![Code license: MIT](https://img.shields.io/badge/code%20license-MIT-green)](LICENSE)
+[![Data license: CC BY 4.0](https://img.shields.io/badge/data%20license-CC%20BY%204.0-lightgrey)](LICENSE-DATA.md)
+
+[Quick start](#quick-start) · [Dashboard](https://radiotherapy-optimization.github.io/RadOptLIB/dashboard/) · [Python notebook](examples/quickstart.ipynb) ·
+[Documentation](docs/qp.md) · [MPS converter](docs/mps.md) · [How to cite](#citation)
 
 RadOptLIB provides large-scale optimization problems from cancer radiotherapy for benchmarking
 solvers and algorithms. The problems are real: they come from the treatment planning system used
@@ -22,12 +26,7 @@ programs) and will be added as rows of this table.
 
 The instances are released as plain mathematical problems (matrices and vectors only, with no images
 or clinical records), so no radiotherapy software or knowledge is needed to use them. Every instance
-comes with a [reference solution](#reference-solutions). The files are hosted on Harvard Dataverse in
-HDF5 format, readable in [Python](examples/quickstart.ipynb), [Julia, MATLAB](docs/qp.md#reading-a-file)
-and most other languages, and can be converted to MPS with a
-[stand-alone program](mps/README.md). They can be browsed and downloaded in a web
-[dashboard](https://radiotherapy-optimization.github.io/RadOptLIB/dashboard/), or from code with the
-[`radoptlib` Python package](examples/quickstart.ipynb) provided in this repository.
+comes with a [reference solution](#reference-solutions).
 
 <details>
 <summary><b>What is radiotherapy optimization?</b></summary>
@@ -36,7 +35,7 @@ and most other languages, and can be converted to MPS with a
 <img src="assets/linac.gif" align="right" width="50%" alt="Animation of a radiotherapy treatment machine rotating around a patient while the multi-leaf collimator shapes the beam">
 
 Radiotherapy treats cancer by directing high-energy radiation beams at the tumor, and is used for
-more than half of all cancer patients. The treatment machine rotates around the patient and delivers
+about half of all cancer patients. The treatment machine rotates around the patient and delivers
 radiation from many directions. At the machine head, a set of movable metal leaves (the multi-leaf
 collimator in the animation) shapes the beam, and the machine controls its intensity.
 
@@ -58,6 +57,33 @@ For a fuller introduction, see PortPy's
 
 <br clear="right">
 </details>
+
+## Quick start
+
+The instances and reference solutions are HDF5 files on
+[Harvard Dataverse](https://doi.org/10.7910/DVN/W38OB6). There are three ways to use them:
+
+- **Without programming:** browse, select and download instances in the
+  [dashboard](https://radiotherapy-optimization.github.io/RadOptLIB/dashboard/), or from the dataset
+  page on Harvard Dataverse.
+- **In any language:** read the files with any HDF5 library; short reading code for Python, Julia and
+  MATLAB is in [docs/qp.md](docs/qp.md#reading-a-file). For solvers that read MPS files, the
+  stand-alone program [`radoptlib2mps`](docs/mps.md) converts them (no Python needed).
+- **In Python:** the `radoptlib` package finds, downloads, loads and evaluates instances.
+
+  ```bash
+  pip install git+https://github.com/Radiotherapy-Optimization/RadOptLIB.git
+  ```
+
+  ```python
+  import radoptlib
+  p = radoptlib.load('rt-qp-0062')               # downloaded on first use
+  sol = radoptlib.load_solution('rt-qp-0062')    # its reference solution
+  print(radoptlib.evaluate_solution(p, sol['x'], sol['dual_ineq_cons'], sol['dual_lower_bound'],
+                                    sol['dual_upper_bound']))
+  ```
+
+  The [quick-start notebook](examples/quickstart.ipynb) shows every step with its output.
 
 ## Problem statistics
 
@@ -87,14 +113,6 @@ other sets (up to 314 million nonzeros, against 9.6 million).
 
 ## Data format and access
 
-The instances are distributed as HDF5 files, which can be read in Python, Julia, MATLAB, C/C++ and
-most other languages; reading code is provided for [Python](examples/quickstart.ipynb),
-[Julia and MATLAB](docs/qp.md#reading-a-file). For solvers that read MPS, a
-[stand-alone converter](mps/README.md) is provided. No programming is needed to get the data: instances and
-their reference solutions can be browsed, selected and downloaded in the [dashboard](https://radiotherapy-optimization.github.io/RadOptLIB/dashboard/), or directly from Harvard Dataverse.
-Python users can also filter, download and load instances from code with the
-[`radoptlib` package](examples/quickstart.ipynb) provided in this repository.
-
 Each instance is one file named `rt-<class>-####.h5` (for example `rt-qp-0001.h5`), and its reference
 solution is a second file named `rt-<class>-####-sol-<solver>.h5` (for example
 `rt-qp-0001-sol-warmip.h5`). The manifest
@@ -114,8 +132,8 @@ The [dashboard](https://radiotherapy-optimization.github.io/RadOptLIB/dashboard/
    Windows, macOS and Linux that needs nothing installed, and lists of the file addresses and
    checksums.
 
-The same files can be downloaded from the dataset page on Harvard Dataverse (link to be added at
-release).
+The same files can be downloaded from the dataset page on Harvard Dataverse,
+[doi:10.7910/DVN/W38OB6](https://doi.org/10.7910/DVN/W38OB6).
 
 </details>
 
@@ -163,7 +181,7 @@ radoptlib2mps FOLDER
 For every instance in the folder it writes an MPS file next to the HDF5 file (`rt-qp-0001.mps.gz`
 next to `rt-qp-0001.h5`). The MPS files describe exactly the same problems; they are produced on
 your computer instead of being hosted because they are much larger than the HDF5 files. Full
-instructions are in [mps/README.md](mps/README.md). In Python, `radoptlib.to_mps` does the same.
+instructions are in [docs/mps.md](docs/mps.md). In Python, `radoptlib.to_mps` does the same.
 
 </details>
 
@@ -192,7 +210,8 @@ p = radoptlib.load(names[0])              # sparse p.Q and p.G; vectors p.q, p.h
 
 # Solve with your own solver and evaluate the result. The solver returns x and the multipliers of
 # Gx <= h, x >= l and x <= u; evaluate_solution returns the objective value and the KKT residuals
-# (primal residual, dual residual and duality gap).
+# (primal residual, dual residual and duality gap). my_solver stands for your own QP solver; the
+# notebook has a complete example with the open-source solver Clarabel.
 x, dual_ineq_cons, dual_lower_bound, dual_upper_bound = my_solver(p.Q, p.q, p.G, p.h, p.l, p.u)
 print(radoptlib.evaluate_solution(p, x, dual_ineq_cons, dual_lower_bound, dual_upper_bound))
 
@@ -222,39 +241,35 @@ Every instance has a reference solution, computed with
 and dual vectors. The objective value and the residuals are not stored; they can be computed with
 `evaluate_solution` ([docs/qp.md](docs/qp.md#evaluating-a-solution)). The reference solutions can be
 downloaded together with the instances in the [dashboard](https://radiotherapy-optimization.github.io/RadOptLIB/dashboard/),
-or with [`load_solution`](examples/quickstart.ipynb) in Python.
-
-```python
-sol = radoptlib.load_solution('rt-qp-0001')              # downloaded on first use, or pass a file path
-radoptlib.evaluate_solution(radoptlib.load('rt-qp-0001'), sol['x'], sol['dual_ineq_cons'],
-                            sol['dual_lower_bound'], sol['dual_upper_bound'])
-```
+or with `load_solution` in Python (see [Quick start](#quick-start)).
 
 ## Citation
 
 A paper dedicated to RadOptLIB is in preparation. Until it appears, please cite the paper below. The
 RadOptLIB instances were generated with the clinical version of
 [PortPy](https://github.com/PortPy-Project/PortPy), the open-source project that this paper presents.
+The Harvard Dataverse DOI identifies where the data files are hosted; to cite RadOptLIB, please cite
+this paper.
 
 ```bibtex
 @inproceedings{jhanwar2026portpyai,
   title     = {PortPy.AI: A Benchmark for AI and Optimization in Cancer Radiotherapy Planning},
   author    = {Jhanwar, Gourav and Tefagh, Mojtaba and Huang, Qijie and Golkarieh, Alireza and Hong, Linda and Pham, Hai and Taasti, Vicki Trier and Tuomaala, Seppo and Magliari, Anthony and Folkerts, Michael and Zhou, Ying and Yang, Jie and Nadeem, Saad and Zarepisheh, Masoud},
-  booktitle = {Advances in Neural Information Processing Systems (NeurIPS), Evaluations and Datasets Track},
+  booktitle = {Advances in Neural Information Processing Systems (NeurIPS), Evaluations \& Datasets Track},
   year      = {2026}
 }
 ```
 
 ## License
 
-- Code: MIT License (`LICENSE`)
-- Data (instances, reference solutions and manifests): CC BY 4.0 (`LICENSE-DATA.md`)
+- Code: MIT License ([LICENSE](LICENSE))
+- Data (instances, reference solutions and manifests): CC BY 4.0 ([LICENSE-DATA.md](LICENSE-DATA.md))
 
 ## Contact
 
 - **Questions and bug reports:** please open an
-  [issue](https://github.com/Radiotherapy-Optimization/RadOptLIB/issues), or contact Gourav Jhanwar
-  (jhanwarg@mskcc.org), Memorial Sloan Kettering Cancer Center.
+  [issue](https://github.com/Radiotherapy-Optimization/RadOptLIB/issues), or contact the **Core Contributor** Gourav Jhanwar (jhanwarg@mskcc.org), Memorial Sloan Kettering
+  Cancer Center.
 - **Principal investigator:** Masoud Zarepisheh (zarepism@mskcc.org), Memorial Sloan Kettering Cancer
   Center, also the contact for collaborations.
 - **Collaborator and advisor:** Mojtaba Tefagh (m.tefagh@ed.ac.uk), University of Edinburgh.

@@ -7,4 +7,4 @@
 - `radoptlib` Python package: load, download, select, info, list_instances, evaluate_solution,
   load_solution, to_mps.
 - `radoptlib2mps`: converts a folder of HDF5 instances to MPS files; installed with the package and also
-  built as a stand-alone program for users without Python. See [mps/README.md](mps/README.md).
+  built as a stand-alone program for users without Python. See [docs/mps.md](docs/mps.md).

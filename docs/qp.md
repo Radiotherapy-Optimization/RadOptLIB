@@ -25,7 +25,9 @@ many variables have no quadratic term.
 The instances are subproblems from the treatment planning of volumetric modulated arc therapy (VMAT)
 plans of real patients, planned with a hierarchical (prioritized) optimization: the clinical goals
 are optimized in successive stages, and each stage keeps what the earlier stages achieved while
-improving the next goals. The **type** of an instance (0, 1 or 2) is the stage it comes from.
+improving the next goals. The **type** of an instance (0, 1 or 2) is the stage it comes from:
+types 0 and 1 optimize the dose to the tumor (type 0 with dose–volume constraints), and type 2
+lowers the dose to the healthy organs while keeping the tumor dose reached before.
 Each patient contributes two or three instances; they share the same anatomy and beam geometry but
 differ in the objective terms and constraints of their stage. What the variables and constraints represent is explained under
 "What is radiotherapy optimization?" in the [README](../README.md).
@@ -189,9 +191,22 @@ z_u the multipliers (all ≥ 0) of Gx ≤ h, x ≥ l and x ≤ u:
 - `primal_res` = max(‖max(Gx − h, 0)‖, ‖max(l − x, 0)‖, ‖max(x − u, 0)‖) / (1 + max(‖Gx‖, ‖h‖, ‖x‖, ‖l‖, ‖u‖)), with finite bounds only
 - `dual_res` = ‖Qx + q + G'y − z_l + z_u‖ / (1 + max(‖Qx‖, ‖q‖, ‖G'y‖, ‖z_l‖, ‖z_u‖))
 - `gap` = |pobj − dobj| / (1 + max(|pobj|, |dobj|)), with pobj = ½x'Qx + q'x + c and dobj = −½x'Qx − h'y + l'z_l − u'z_u + c
-- `dual_infeas` = how far the multipliers are from being nonnegative, and from zero where a bound is missing
+- `dual_infeas` = max(‖max(−y, 0)‖, ‖max(−z_l, 0)‖, ‖max(−z_u, 0)‖, ‖z_l‖ where l = −∞, ‖z_u‖ where u = +∞)
+  / (1 + max(‖y‖, ‖z_l‖, ‖z_u‖)): how far the multipliers are from being nonnegative, and from zero where
+  a bound is missing
+
+`dual_res`, `gap` and `dual_infeas` are reported only when at least one multiplier is given; multipliers
+that are not given count as zero. With `tol`, the result also contains `ok`, which is true when every
+reported residual is at most `tol`.
 
 ## Manifest columns (`manifest/qp.csv`)
+
+The manifest has one row per instance. The download links point to the files on
+[Harvard Dataverse](https://doi.org/10.7910/DVN/W38OB6).
+
+<details>
+<summary><b>All columns</b></summary>
+<br>
 
 | Column | Meaning |
 |---|---|
@@ -209,8 +224,10 @@ z_u the multipliers (all ≥ 0) of Gx ≤ h, x ≥ l and x ≤ u:
 | `modality` | treatment modality, for example `vmat` |
 | `protocol` | prescription of the plan, `<site>_<dose per fraction>gy_<fractions>fx`, for example `prostate_5gy_5fx` |
 | `type` | 0, 1 or 2: the stage of the hierarchical optimization (see [Origin](#origin)) |
-| `url` | download address |
+| `url` | Harvard Dataverse download link of the h5 file |
 | `md5` | md5 checksum of the h5 file |
-| `sol_url`, `sol_md5` | download address and md5 checksum of the Warm-IP reference solution file |
+| `sol_warmip_url`, `sol_warmip_md5` | Harvard Dataverse download link and md5 checksum of the Warm-IP reference solution file (a solution from another solver would get its own `sol_<solver>_url` and `sol_<solver>_md5` columns) |
 | `added_in_version` | release in which the instance first appeared |
 | `note` | free text, usually empty |
+
+</details>

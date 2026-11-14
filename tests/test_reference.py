@@ -39,5 +39,5 @@ def test_load_solution_by_path_and_name(tmp_path, monkeypatch, qp_file, qp):
 
 def test_load_solution_missing(tmp_path, monkeypatch):
     monkeypatch.setenv('RADOPTLIB_DATA', str(tmp_path))
-    with pytest.raises(FileNotFoundError):
-        radoptlib.load_solution('rt-qp-0001')
+    with pytest.raises(FileNotFoundError):                    # not in the manifest: nothing to download
+        radoptlib.load_solution('rt-qp-9999')

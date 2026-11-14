@@ -11,7 +11,9 @@ All residuals are relative and use the infinity norm:
   dual_res   = ||Qx + q + G'y - z_l + z_u|| / (1 + max(||Qx||, ||q||, ||G'y||, ||z_l||, ||z_u||))
   gap        = |pobj - dobj| / (1 + max(|pobj|, |dobj|)),
                pobj = 0.5 x'Qx + q'x + c,  dobj = -0.5 x'Qx - h'y + l'z_l - u'z_u + c
-  dual_infeas = how far the multipliers are from being nonnegative (and zero at missing bounds).
+  dual_infeas = max(||max(-y, 0)||, ||max(-z_l, 0)||, ||max(-z_u, 0)||, ||z_l at l = -inf||, ||z_u at u = inf||)
+                / (1 + max(||y||, ||z_l||, ||z_u||))
+                how far the multipliers are from being nonnegative (and zero at missing bounds).
 """
 import numpy as np
 
@@ -56,7 +58,7 @@ def evaluate_solution(problem, x, dual_ineq_cons=None, dual_lower_bound=None, du
         out['dual_res'] = _inf(Qx + q + Gty - zl + zu) / (1.0 + max(_inf(Qx), _inf(q), _inf(Gty), _inf(zl), _inf(zu)))
         out['gap'] = abs(pobj - dobj) / (1.0 + max(abs(pobj), abs(dobj)))
         out['dual_infeas'] = max(_inf(np.maximum(-y, 0.0)), _inf(np.maximum(-zl, 0.0)), _inf(np.maximum(-zu, 0.0)),
-                                 _inf(zl[~fl]), _inf(zu[~fu]))
+                                 _inf(zl[~fl]), _inf(zu[~fu])) / (1.0 + max(_inf(y), _inf(zl), _inf(zu)))
     if tol is not None:
         out['ok'] = all(out[k] <= tol for k in ('primal_res', 'dual_res', 'gap', 'dual_infeas') if k in out)
     return out

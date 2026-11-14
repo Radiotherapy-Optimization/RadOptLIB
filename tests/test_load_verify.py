@@ -36,13 +36,14 @@ def test_evaluate_solution_detects_errors(qp_file, qp):
     p = radoptlib.load(qp_file)
     r = radoptlib.evaluate_solution(p, qp['x'] + 1.0, qp['y'], qp['zl'], qp['zu'], tol=1e-6)
     assert not r['ok'] and r['dual_res'] > 1e-6
+    scale = lambda y, zl, zu: 1.0 + max(abs(y).max(), abs(zl).max(), abs(zu).max())   # dual_infeas is relative
     r = radoptlib.evaluate_solution(p, qp['x'], -np.ones(p.m), qp['zl'], qp['zu'], tol=1e-6)
-    assert not r['ok'] and r['dual_infeas'] == 1.0
+    assert not r['ok'] and r['dual_infeas'] == 1.0 / scale(-np.ones(p.m), qp['zl'], qp['zu'])
     r = radoptlib.evaluate_solution(p, qp['x'], qp['y'], qp['zl'], None, tol=1e-6)    # dual_upper_bound left out
     assert not r['ok'] and r['dual_res'] > 1e-6
     zl = qp['zl'].copy()
     zl[10] = 0.5                                              # multiplier on a missing bound
-    assert radoptlib.evaluate_solution(p, qp['x'], qp['y'], zl, qp['zu'])['dual_infeas'] == 0.5
+    assert radoptlib.evaluate_solution(p, qp['x'], qp['y'], zl, qp['zu'])['dual_infeas'] == 0.5 / scale(qp['y'], zl, qp['zu'])
 
 
 def test_evaluate_solution_bound_violation(qp_file, qp):

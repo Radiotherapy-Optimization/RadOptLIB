@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>RadOptLIB instance browser</title>
 <meta name="description" content="Browse, filter and download the RadOptLIB benchmark instances.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232a78d6'/%3E%3Ccircle cx='16' cy='16' r='4' fill='%23fff'/%3E%3Cpath d='M16 4v6M16 22v6M4 16h6M22 16h6' stroke='%23fff' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E">
 <!--
   RadOptLIB instance browser. One static page, no build step and no outside libraries.
   It reads ../manifest/<class>.csv each time it loads, so it always shows the current manifest.
@@ -126,7 +127,7 @@
   <nav>
     <a href="https://github.com/Radiotherapy-Optimization/RadOptLIB">GitHub repository</a>
     <a id="lnk-format" href="https://github.com/Radiotherapy-Optimization/RadOptLIB/blob/main/docs/qp.md">File format and how to read it</a>
-    <a href="https://github.com/Radiotherapy-Optimization/RadOptLIB/blob/main/mps/README.md">Converting to MPS</a>
+    <a href="https://github.com/Radiotherapy-Optimization/RadOptLIB/blob/main/docs/mps.md">Converting to MPS</a>
   </nav>
 
   <div id="error" class="card error" hidden></div>
@@ -186,8 +187,8 @@
         </div>
         <h3>After downloading</h3>
         <ul class="links">
-          <li><a id="lnk-read" href="https://github.com/Radiotherapy-Optimization/RadOptLIB/blob/main/docs/qp.md#reading-a-file">Reading the files in Julia and MATLAB</a></li>
-          <li><a href="https://github.com/Radiotherapy-Optimization/RadOptLIB/blob/main/mps/README.md">Converting the files to MPS</a></li>
+          <li><a id="lnk-read" href="https://github.com/Radiotherapy-Optimization/RadOptLIB/blob/main/docs/qp.md#reading-a-file">Reading the files (Python, Julia, MATLAB)</a></li>
+          <li><a href="https://github.com/Radiotherapy-Optimization/RadOptLIB/blob/main/docs/mps.md">Converting the files to MPS</a></li>
           <li><a href="https://github.com/Radiotherapy-Optimization/RadOptLIB/blob/main/examples/quickstart.ipynb">Python quick start (notebook)</a></li>
         </ul>
       </section>
@@ -219,7 +220,7 @@ const CLASSES = [{ id: 'qp', label: 'QP: convex continuous quadratic programs' }
 const MAX_FILES = 10, MAX_BYTES = 5e9;              // limits of the in-browser "Download selected" button (instances)
 const solName = r => r.name + '-sol-warmip.h5';
 const withSol = () => $('with-sol').checked;
-const solutions = sel => withSol() ? sel.filter(r => r.sol_url) : [];   // selected instances whose solution is downloaded too
+const solutions = sel => withSol() ? sel.filter(r => r.sol_warmip_url) : [];   // selected instances whose solution is downloaded too
 const SITE_LABEL = { lung: 'Lung', oligomets: 'Oligometastases', prostate: 'Prostate' };
 const SIZE_ORDER = ['small', 'medium', 'large'];
 // Categorical colors are assigned to disease sites in a fixed order (sites sorted by name), so a filter never
@@ -506,7 +507,7 @@ function drawTable(shown) {
     }
     const td = el('td');
     if (r.url) td.append(el('a', { href: r.url, rel: 'noopener' }, 'HDF5')); else td.append(el('span', { class: 'na' }, 'not yet available'));
-    if (r.sol_url) td.append(' · ', el('a', { href: r.sol_url, rel: 'noopener' }, 'solution'));
+    if (r.sol_warmip_url) td.append(' · ', el('a', { href: r.sol_warmip_url, rel: 'noopener' }, 'solution'));
     tr.append(td); frag.append(tr);
   }
   body.append(frag);
@@ -546,7 +547,7 @@ function scriptSh(sel) {
     '  if curl -f -L --retry 5 -o "$1.part" "$2"; then mv "$1.part" "$1"; else rm -f "$1.part"; failed="$failed $1"; fi',
     '}', '',
     ...sel.map(r => `fetch ${q(r.name + '.h5')} ${r.file_size_bytes} ${q(r.url)}`),
-    ...solutions(sel).map(r => `fetch_small ${q(solName(r))} ${q(r.sol_url)}`), '',
+    ...solutions(sel).map(r => `fetch_small ${q(solName(r))} ${q(r.sol_warmip_url)}`), '',
     'if [ -n "$failed" ]; then',
     '  echo "Not completed:$failed"',
     '  echo "Run the script again to continue."',
@@ -567,7 +568,7 @@ function scriptBat(sel) {
     ')',
     'set "FAILED="', '',
     ...sel.map(r => `call :fetch ${q(r.name + '.h5')} ${r.file_size_bytes} ${q(r.url)}`),
-    ...solutions(sel).map(r => `call :fetchsmall ${q(solName(r))} ${q(r.sol_url)}`), '',
+    ...solutions(sel).map(r => `call :fetchsmall ${q(solName(r))} ${q(r.sol_warmip_url)}`), '',
     'echo.',
     'if defined FAILED (',
     '  echo Not completed:%FAILED%',
@@ -618,7 +619,7 @@ function drawDownload() {
   $('btn-bat').disabled = !hasUrl; $('btn-sh').disabled = !hasUrl;
   $('btn-urls').disabled = !hasUrl;
   $('btn-md5').disabled = !(sel.length > 0 && sel.every(r => r.md5));
-  $('with-sol').disabled = !rows.some(r => r.sol_url);
+  $('with-sol').disabled = !rows.some(r => r.sol_warmip_url);
 }
 function saveText(name, text) {
   const a = el('a', { href: URL.createObjectURL(new Blob([text], { type: 'text/plain' })), download: name });
@@ -626,7 +627,7 @@ function saveText(name, text) {
 }
 async function downloadSelected() {
   const sel = selection(), btn = $('btn-dl');
-  const files = sel.map(r => [r.name + '.h5', r.url]).concat(solutions(sel).map(r => [solName(r), r.sol_url]));
+  const files = sel.map(r => [r.name + '.h5', r.url]).concat(solutions(sel).map(r => [solName(r), r.sol_warmip_url]));
   btn.disabled = true;
   for (let i = 0; i < files.length; i++) {
     btn.textContent = `Starting ${i + 1} of ${files.length}…`;
@@ -661,9 +662,9 @@ $('btn-dl').addEventListener('click', downloadSelected);
 $('btn-bat').addEventListener('click', () => saveText('radoptlib-download.bat', scriptBat(selection())));
 $('btn-sh').addEventListener('click', () => saveText('radoptlib-download.sh', scriptSh(selection())));
 $('btn-urls').addEventListener('click', () => { const sel = selection();
-  saveText('radoptlib-addresses.txt', sel.map(r => r.url).concat(solutions(sel).map(r => r.sol_url)).join('\n') + '\n'); });
+  saveText('radoptlib-addresses.txt', sel.map(r => r.url).concat(solutions(sel).map(r => r.sol_warmip_url)).join('\n') + '\n'); });
 $('btn-md5').addEventListener('click', () => { const sel = selection();
-  saveText('radoptlib-checksums.md5', sel.map(r => r.md5 + '  ' + r.name + '.h5').concat(solutions(sel).filter(r => r.sol_md5).map(r => r.sol_md5 + '  ' + solName(r))).join('\n') + '\n'); });
+  saveText('radoptlib-checksums.md5', sel.map(r => r.md5 + '  ' + r.name + '.h5').concat(solutions(sel).filter(r => r.sol_warmip_md5).map(r => r.sol_warmip_md5 + '  ' + solName(r))).join('\n') + '\n'); });
 $('with-sol').addEventListener('change', drawDownload);
 const plotEl = $('plot');
 plotEl.addEventListener('pointermove', ev => showTip(nearest(ev), ev));

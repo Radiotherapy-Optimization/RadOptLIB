@@ -88,13 +88,13 @@ def test_load_solution_downloads_from_manifest(fake_library, qp, tmp_path):
             f.create_dataset(k, data=v)
         f.create_dataset('solver', data='test solver')
         f.create_dataset('format_note', data='reference solution')
-    with pytest.raises(FileNotFoundError):                    # no sol_url in the manifest yet
+    with pytest.raises(FileNotFoundError):                    # no sol_warmip_url in the manifest yet
         radoptlib.load_solution('rt-qp-0001')
-    fake_library[0].update({'sol_url': src.as_uri(), 'sol_md5': '0' * 32})
+    fake_library[0].update({'sol_warmip_url': src.as_uri(), 'sol_warmip_md5': '0' * 32})
     with pytest.raises(RuntimeError, match='md5 mismatch'):
         radoptlib.load_solution('rt-qp-0001')
     assert not (radoptlib.data_dir() / 'rt-qp-0001-sol-warmip.h5').exists()
-    fake_library[0]['sol_md5'] = hashlib.md5(src.read_bytes()).hexdigest()
+    fake_library[0]['sol_warmip_md5'] = hashlib.md5(src.read_bytes()).hexdigest()
     sol = radoptlib.load_solution('rt-qp-0001')
     assert (sol['x'] == qp['x']).all() and (radoptlib.data_dir() / 'rt-qp-0001-sol-warmip.h5').exists()
 

@@ -40,10 +40,10 @@ jobs:
       - name: Tests
         run: python -m pytest -q
       - name: Build
-        run: pyinstaller mps/radoptlib2mps.spec
+        run: pyinstaller packaging/radoptlib2mps.spec
       - name: Try the program on a small synthetic instance
         run: |
-          python -c "import sys; sys.path.insert(0, 'tests'); from conftest import make_qp, write_h5; import os; os.makedirs('smoke', exist_ok=True); write_h5('smoke/rt-qp-0001.h5', make_qp(), name='rt-qp-0001')"
+          python -c "import sys; sys.path.insert(0, 'tests'); from conftest import ATTRS, make_qp, write_h5; import os; os.makedirs('smoke', exist_ok=True); write_h5('smoke/rt-qp-0001.h5', make_qp(), attrs=dict(ATTRS, name='rt-qp-0001'))"
           ./dist/${{ matrix.built }} --version
           ./dist/${{ matrix.built }} smoke
           python -c "import gzip; assert gzip.open('smoke/rt-qp-0001.mps.gz').read().startswith(b'NAME rt-qp-0001')"

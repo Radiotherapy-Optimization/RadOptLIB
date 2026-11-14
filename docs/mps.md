@@ -98,7 +98,7 @@ the converter of that release. To build one by hand:
 
 ```
 pip install . pyinstaller
-pyinstaller mps/radoptlib2mps.spec
+pyinstaller packaging/radoptlib2mps.spec
 ```
 
 The result is `dist/radoptlib2mps` (`dist\radoptlib2mps.exe` on Windows).

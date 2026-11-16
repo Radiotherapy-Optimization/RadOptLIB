@@ -268,7 +268,7 @@ this paper.
 ## Contact
 
 - **Questions and bug reports:** please open an
-  [issue](https://github.com/Radiotherapy-Optimization/RadOptLIB/issues), or contact the **Core Contributor** Gourav Jhanwar (jhanwarg@mskcc.org), Memorial Sloan Kettering
+  [issue](https://github.com/Radiotherapy-Optimization/RadOptLIB/issues), or contact **Core Contributor** Gourav Jhanwar (jhanwarg@mskcc.org), Memorial Sloan Kettering
   Cancer Center.
 - **Principal investigator:** Masoud Zarepisheh (zarepism@mskcc.org), Memorial Sloan Kettering Cancer
   Center, also the contact for collaborations.

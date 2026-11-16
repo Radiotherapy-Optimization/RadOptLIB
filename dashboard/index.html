@@ -218,6 +218,11 @@
 const REPO = 'https://github.com/Radiotherapy-Optimization/RadOptLIB';
 const CLASSES = [{ id: 'qp', label: 'QP: convex continuous quadratic programs' }];
 const MAX_FILES = 10, MAX_BYTES = 5e9;              // limits of the in-browser "Download selected" button (instances)
+// Several files are saved into one zip file built in the browser (stored, not compressed: the HDF5 files are
+// already compressed). Streaming to disk needs the File System Access API (Chrome, Edge); other browsers
+// download the files one by one, with the limits above.
+const ZIP_OK = typeof window.showSaveFilePicker === 'function';
+const RETRIES = 5;                                  // per file; an interrupted file continues where it stopped
 const solName = r => r.name + '-sol-warmip.h5';
 const withSol = () => $('with-sol').checked;
 const solutions = sel => withSol() ? sel.filter(r => r.sol_warmip_url) : [];   // selected instances whose solution is downloaded too
@@ -607,13 +612,16 @@ function drawDownload() {
   const hasUrl = sel.length > 0 && sel.every(r => r.url);
   const anyUrl = rows.some(r => r.url);
   const btn = $('btn-dl'), note = $('dl-note');
+  const nFiles = sel.length + solutions(sel).length;
   btn.textContent = sel.length ? `Download ${sel.length} instance${sel.length > 1 ? 's' : ''} (${fmtBytes(bytes)})` : 'Download selected';
-  const tooMany = sel.length > MAX_FILES || bytes > MAX_BYTES;
+  const zipMode = ZIP_OK && nFiles > 1;
+  const tooMany = !zipMode && (sel.length > MAX_FILES || bytes > MAX_BYTES);   // the zip download has no limit
   btn.disabled = !hasUrl || tooMany;
   if (!sel.length) note.textContent = 'Select instances with the checkboxes in the table, or by clicking points in the plot.';
   else if (!anyUrl) note.textContent = 'Downloads are not yet available: the files are not on Harvard Dataverse yet. The download script will work once they are.';
   else if (!hasUrl) note.textContent = 'Some selected instances have no download address yet.';
   else if (tooMany) note.textContent = `The button downloads up to ${MAX_FILES} instances or ${fmtBytes(MAX_BYTES)} at a time, because browsers handle many large downloads poorly. For this selection, use the download script below.`;
+  else if (zipMode) note.textContent = 'The files are saved into one zip file; your browser asks where to save it. Keep this page open until the download is complete. For very large selections, the download script below is more robust: it can be resumed at any time and needs no extra disk space for unzipping.';
   else note.textContent = 'Your browser may ask for permission to download several files. For larger selections, use the download script below.';
 
   $('btn-bat').disabled = !hasUrl; $('btn-sh').disabled = !hasUrl;
@@ -625,9 +633,123 @@ function saveText(name, text) {
   const a = el('a', { href: URL.createObjectURL(new Blob([text], { type: 'text/plain' })), download: name });
   document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
+// ---------------------------------------------------------------- zip file (stored, zip64)
+// Each file is streamed from its address straight into the zip on disk; the CRC-32 and the sizes are
+// written into the local header afterwards (the file handle allows writing at a position).
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; }
+  return t;
+})();
+function crc32(crc, b) {
+  crc = ~crc;
+  for (let i = 0; i < b.length; i++) crc = CRC_TABLE[(crc ^ b[i]) & 255] ^ (crc >>> 8);
+  return ~crc >>> 0;
+}
+function bytesOf(size, fill) { const b = new Uint8Array(size); fill(new DataView(b.buffer)); return b; }
+function dosTime(d) {
+  return { time: (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1),
+           date: ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate() };
+}
+async function saveZip(files) {
+  const btn = $('btn-dl'), note = $('dl-note');
+  let handle;
+  try {
+    handle = await window.showSaveFilePicker({ suggestedName: 'radoptlib-' + cls + '.zip',
+      types: [{ description: 'Zip file', accept: { 'application/zip': ['.zip'] } }] });
+  } catch (e) { return; }                             // the user closed the dialog
+  btn.disabled = true;
+  const w = await handle.createWritable();
+  const enc = new TextEncoder(), { time, date } = dosTime(new Date()), entries = [];
+  let pos = 0;
+  const put = async data => { await w.write({ type: 'write', position: pos, data }); pos += data.length; };
+  try {
+    for (let i = 0; i < files.length; i++) {
+      const [name, url] = files[i], nameB = enc.encode(name), offset = pos;
+      await put(bytesOf(30, v => {                    // local file header; crc and sizes follow below
+        v.setUint32(0, 0x04034b50, true); v.setUint16(4, 45, true); v.setUint16(6, 0x0800, true);
+        v.setUint16(10, time, true); v.setUint16(12, date, true);
+        v.setUint32(18, 0xFFFFFFFF, true); v.setUint32(22, 0xFFFFFFFF, true);
+        v.setUint16(26, nameB.length, true); v.setUint16(28, 20, true);
+      }));
+      await put(nameB);
+      await put(bytesOf(20, v => { v.setUint16(0, 1, true); v.setUint16(2, 16, true); }));   // zip64 extra field
+      const dataStart = pos;
+      let crc = 0, size = 0, total = 0, buf = [], bufLen = 0;
+      const flush = async () => { if (!bufLen) return; const b = new Uint8Array(bufLen); let o = 0;
+        for (const c of buf) { b.set(c, o); o += c.length; } buf = []; bufLen = 0; await put(b); };
+      for (let attempt = 0; ; attempt++) {
+        try {
+          const res = await fetch(url, size ? { headers: { Range: `bytes=${size}-` } } : undefined);
+          if (!res.ok) {                              // 4xx (except 429) will not get better by retrying
+            const err = new Error(`${name}: HTTP ${res.status}`);
+            err.fatal = res.status < 500 && res.status !== 429;
+            throw err;
+          }
+          if (size && !(res.status === 206 && (res.headers.get('Content-Range') || '').startsWith(`bytes ${size}-`))) {
+            crc = 0; size = 0; buf = []; bufLen = 0; pos = dataStart;   // the server did not continue: start the file again
+          }
+          if (!size) total = +res.headers.get('Content-Length') || 0;
+          const reader = res.body.getReader();
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            crc = crc32(crc, value); size += value.length; buf.push(value); bufLen += value.length;
+            if (bufLen >= 8 << 20) await flush();
+            btn.textContent = `File ${i + 1} of ${files.length}` + (total ? ` · ${Math.floor(100 * size / total)}%` : '');
+          }
+          if (total && size !== total) throw new Error(`${name}: incomplete (${size} of ${total} bytes)`);
+          await flush();
+          break;
+        } catch (e) {
+          if (e.fatal || e.name === 'QuotaExceededError' || attempt >= RETRIES) throw e;
+          btn.textContent = `File ${i + 1} of ${files.length} · connection lost, retrying…`;
+          await new Promise(res => setTimeout(res, 2000 * 2 ** attempt));   // 2, 4, 8, 16, 32 s
+        }
+      }
+      const end = pos;
+      pos = offset + 14; await put(bytesOf(4, v => v.setUint32(0, crc, true)));
+      pos = offset + 30 + nameB.length + 4;
+      await put(bytesOf(16, v => { v.setBigUint64(0, BigInt(size), true); v.setBigUint64(8, BigInt(size), true); }));
+      pos = end;
+      entries.push({ nameB, crc, size, offset });
+    }
+    const cdStart = pos;
+    for (const e of entries) {                        // central directory
+      await put(bytesOf(46, v => {
+        v.setUint32(0, 0x02014b50, true); v.setUint16(4, 45, true); v.setUint16(6, 45, true); v.setUint16(8, 0x0800, true);
+        v.setUint16(12, time, true); v.setUint16(14, date, true); v.setUint32(16, e.crc, true);
+        v.setUint32(20, 0xFFFFFFFF, true); v.setUint32(24, 0xFFFFFFFF, true);
+        v.setUint16(28, e.nameB.length, true); v.setUint16(30, 28, true); v.setUint32(42, 0xFFFFFFFF, true);
+      }));
+      await put(e.nameB);
+      await put(bytesOf(28, v => { v.setUint16(0, 1, true); v.setUint16(2, 24, true);
+        v.setBigUint64(4, BigInt(e.size), true); v.setBigUint64(12, BigInt(e.size), true); v.setBigUint64(20, BigInt(e.offset), true); }));
+    }
+    const cdSize = pos - cdStart, z64 = pos, n = entries.length;
+    await put(bytesOf(56, v => {                      // zip64 end of central directory record
+      v.setUint32(0, 0x06064b50, true); v.setBigUint64(4, 44n, true); v.setUint16(12, 45, true); v.setUint16(14, 45, true);
+      v.setBigUint64(24, BigInt(n), true); v.setBigUint64(32, BigInt(n), true);
+      v.setBigUint64(40, BigInt(cdSize), true); v.setBigUint64(48, BigInt(cdStart), true);
+    }));
+    await put(bytesOf(20, v => { v.setUint32(0, 0x07064b50, true); v.setBigUint64(8, BigInt(z64), true); v.setUint32(16, 1, true); }));
+    await put(bytesOf(22, v => {                      // end of central directory record
+      v.setUint32(0, 0x06054b50, true); v.setUint16(8, n, true); v.setUint16(10, n, true);
+      v.setUint32(12, 0xFFFFFFFF, true); v.setUint32(16, 0xFFFFFFFF, true);
+    }));
+    await w.close();
+    drawDownload();
+    note.textContent = `Saved ${n} files into ${handle.name}.`;
+  } catch (e) {
+    try { await w.abort(); } catch (_) {}
+    drawDownload();
+    note.textContent = `The download stopped (${e.message}). Try again, or use the download script below, which can resume.`;
+  }
+}
 async function downloadSelected() {
   const sel = selection(), btn = $('btn-dl');
   const files = sel.map(r => [r.name + '.h5', r.url]).concat(solutions(sel).map(r => [solName(r), r.sol_warmip_url]));
+  if (files.length > 1 && ZIP_OK) return saveZip(files);
   btn.disabled = true;
   for (let i = 0; i < files.length; i++) {
     btn.textContent = `Starting ${i + 1} of ${files.length}…`;

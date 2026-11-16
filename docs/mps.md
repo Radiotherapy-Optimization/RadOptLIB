@@ -25,7 +25,7 @@ The programs are not signed, so the system asks for confirmation the first time:
 ## 2. Download instances
 
 Download the `.h5` files you want into one folder, for example with the
-[dashboard](https://radiotherapy-optimization.github.io/RadOptLIB/dashboard/) and the download script it provides.
+[Data Dashboard](https://radiotherapy-optimization.github.io/RadOptLIB/dashboard/).
 
 ## 3. Convert
 

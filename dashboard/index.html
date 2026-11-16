@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>RadOptLIB instance browser</title>
+<title>RadOptLIB Data Dashboard</title>
 <meta name="description" content="Browse, filter and download the RadOptLIB benchmark instances.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232a78d6'/%3E%3Ccircle cx='16' cy='16' r='4' fill='%23fff'/%3E%3Cpath d='M16 4v6M16 22v6M4 16h6M22 16h6' stroke='%23fff' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E">
 <!--
-  RadOptLIB instance browser. One static page, no build step and no outside libraries.
+  RadOptLIB Data Dashboard. One static page, no build step and no outside libraries.
   It reads ../manifest/<class>.csv each time it loads, so it always shows the current manifest.
   To add a problem class, add it to CLASSES below (the manifest must have the same columns).
   To preview locally, run `python -m http.server` in the repository folder and open
@@ -102,8 +102,12 @@
   thead th { position: sticky; top: 0; background: var(--surface); z-index: 1; font-weight: 600; color: var(--ink-2);
              border-bottom: 1px solid var(--axis); }
   thead th button { all: unset; cursor: pointer; }
+  thead th button:hover { color: var(--accent); }
   thead th button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   thead th .arrow { color: var(--muted); font-size: 11px; margin-left: 3px; }
+  thead th .arrow.idle { display: inline-flex; flex-direction: column; font-size: 7px; line-height: 7px;
+                         vertical-align: middle; opacity: 0.55; }   /* sortable, not the current sort column: small ▲ over ▼ */
+  thead th .arrow.on { color: var(--accent); }
   td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   tbody tr:hover { background: var(--wash); }
   tbody tr.sel { background: color-mix(in srgb, var(--accent) 9%, transparent); }
@@ -120,7 +124,7 @@
 <body>
 <div class="wrap">
   <header>
-    <h1>RadOptLIB instance browser</h1>
+    <h1>RadOptLIB Data Dashboard</h1>
     <p>Large-scale optimization problems from cancer radiotherapy. Filter the instances, select the ones you
        want and download them, with their reference solutions, as HDF5 files.</p>
   </header>
@@ -170,21 +174,6 @@
           <label class="incl"><input type="checkbox" id="with-sol" checked>Include the reference solutions (a few MB each)</label>
         </div>
         <p class="dl-note" id="dl-note"></p>
-        <h3>Download script</h3>
-        <p class="dl-note">For any number of files, with nothing to install. Save the script into the folder where
-          the files should go and run it. It can be run again: complete files are skipped and interrupted
-          downloads are resumed.</p>
-        <div class="lists">
-          <button id="btn-bat">Save script for Windows (.bat)</button>
-          <button id="btn-sh">Save script for macOS and Linux (.sh)</button>
-        </div>
-        <p class="hint">Windows: double-click the saved file. macOS and Linux: run <code>sh radoptlib-download.sh</code>
-          in a terminal. The scripts use curl, which is part of Windows 10 and later, macOS and Linux.</p>
-        <h3>Lists for other download tools</h3>
-        <div class="lists">
-          <button id="btn-urls">Save address list (.txt)</button>
-          <button id="btn-md5">Save checksum list (.md5)</button>
-        </div>
         <h3>After downloading</h3>
         <ul class="links">
           <li><a id="lnk-read" href="https://github.com/Radiotherapy-Optimization/RadOptLIB/blob/main/docs/qp.md#reading-a-file">Reading the files (Python, Julia, MATLAB)</a></li>
@@ -480,9 +469,10 @@ function buildHead() {
   th0.append(all); tr.append(th0);
   for (const c of COLUMNS) {
     const th = el('th', c.num ? { class: 'num' } : {});
-    const b = el('button', { type: 'button' }, c.title);
+    const b = el('button', { type: 'button', title: `Sort by ${c.title.toLowerCase()} (click again to reverse)` }, c.title);
     b.addEventListener('click', () => { if (sortKey === c.key) sortDir = -sortDir; else { sortKey = c.key; sortDir = 1; } update(); });
-    th.append(b, el('span', { class: 'arrow', 'data-key': c.key }));
+    b.append(el('span', { class: 'arrow', 'data-key': c.key, 'aria-hidden': 'true' }));   // inside the button: clicking the arrow sorts too
+    th.append(b);
     tr.append(th);
   }
   tr.append(el('th', null, 'Download'));
@@ -494,8 +484,11 @@ function drawTable(shown) {
     return ((typeof x === 'number' && typeof y === 'number') ? x - y : String(x).localeCompare(String(y))) * sortDir
            || a.name.localeCompare(b.name); });
   document.querySelectorAll('thead .arrow').forEach(a => {
-    a.textContent = a.dataset.key === sortKey ? (sortDir > 0 ? '▲' : '▼') : '';
-    a.parentElement.setAttribute('aria-sort', a.dataset.key === sortKey ? (sortDir > 0 ? 'ascending' : 'descending') : 'none');
+    const on = a.dataset.key === sortKey;
+    if (on) a.textContent = sortDir > 0 ? '▲' : '▼';
+    else a.replaceChildren(el('span', null, '▲'), el('span', null, '▼'));
+    a.className = 'arrow ' + (on ? 'on' : 'idle');
+    a.closest('th').setAttribute('aria-sort', on ? (sortDir > 0 ? 'ascending' : 'descending') : 'none');
   });
   const body = $('tbody'); body.textContent = '';
   const frag = document.createDocumentFragment();
@@ -523,90 +516,6 @@ function drawTable(shown) {
 
 // ---------------------------------------------------------------- download panel
 function selection() { return rows.filter(r => selected.has(r.name)).sort((a, b) => a.name.localeCompare(b.name)); }
-// Download scripts: one "fetch" line per file (name, size in bytes, address). A file whose size already matches is
-// skipped; otherwise curl continues it (-C -). The size is checked again afterwards.
-function scriptHeader(sel, c) {
-  const bytes = sel.reduce((s, r) => s + r.file_size_bytes, 0);
-  const ns = solutions(sel).length;
-  return [`${c} RadOptLIB download script: ${sel.length} instance${sel.length > 1 ? 's' : ''} (${fmtBytes(bytes)})${ns ? ' and ' + ns + ' reference solution' + (ns > 1 ? 's' : '') : ''}.`,
-          `${c} Made by the RadOptLIB dashboard on ${new Date().toISOString().slice(0, 10)}.`,
-          `${c} The files are saved in the folder that holds this script. The script can be run again:`,
-          `${c} complete files are skipped and interrupted downloads are resumed.`];
-}
-function scriptSh(sel) {
-  const q = t => "'" + String(t).replace(/'/g, "'\\''") + "'";
-  return ['#!/bin/sh', ...scriptHeader(sel, '#'), '# Run it with:  sh radoptlib-download.sh', '',
-    'cd "$(dirname "$0")" || exit 1',
-    'command -v curl >/dev/null 2>&1 || { echo "curl was not found; please install it first."; exit 1; }',
-    'failed=""',
-    'size_of() { if [ -f "$1" ]; then wc -c < "$1" | tr -d " "; else echo 0; fi; }',
-    'fetch() {',
-    '  if [ "$(size_of "$1")" = "$2" ]; then echo "$1: already complete"; return; fi',
-    '  echo "$1"',
-    '  curl -f -L -C - --retry 5 -o "$1" "$3"',
-    '  if [ "$(size_of "$1")" != "$2" ]; then failed="$failed $1"; fi',
-    '}',
-    'fetch_small() {',
-    '  if [ -f "$1" ]; then echo "$1: already there"; return; fi',
-    '  echo "$1"',
-    '  if curl -f -L --retry 5 -o "$1.part" "$2"; then mv "$1.part" "$1"; else rm -f "$1.part"; failed="$failed $1"; fi',
-    '}', '',
-    ...sel.map(r => `fetch ${q(r.name + '.h5')} ${r.file_size_bytes} ${q(r.url)}`),
-    ...solutions(sel).map(r => `fetch_small ${q(solName(r))} ${q(r.sol_warmip_url)}`), '',
-    'if [ -n "$failed" ]; then',
-    '  echo "Not completed:$failed"',
-    '  echo "Run the script again to continue."',
-    '  exit 1',
-    'fi',
-    'echo "All files are complete."', ''].join('\n');
-}
-function scriptBat(sel) {
-  const q = t => '"' + String(t).replace(/%/g, '%%') + '"';
-  return ['@echo off', ...scriptHeader(sel, 'rem'), 'rem Run it with a double-click, or from the Command Prompt.', '',
-    'setlocal',
-    'cd /d "%~dp0"',
-    'where curl.exe >nul 2>nul',
-    'if errorlevel 1 (',
-    '  echo curl.exe was not found. It is part of Windows 10 version 1803 and later.',
-    '  pause',
-    '  exit /b 1',
-    ')',
-    'set "FAILED="', '',
-    ...sel.map(r => `call :fetch ${q(r.name + '.h5')} ${r.file_size_bytes} ${q(r.url)}`),
-    ...solutions(sel).map(r => `call :fetchsmall ${q(solName(r))} ${q(r.sol_warmip_url)}`), '',
-    'echo.',
-    'if defined FAILED (',
-    '  echo Not completed:%FAILED%',
-    '  echo Run the script again to continue.',
-    ') else (',
-    '  echo All files are complete.',
-    ')',
-    'pause',
-    'exit /b', '',
-    ':fetch',
-    'for %%A in ("%~1") do if "%%~zA"=="%~2" (',
-    '  echo %~1: already complete',
-    '  exit /b',
-    ')',
-    'echo %~1',
-    'curl.exe -f -L -C - --retry 5 -o "%~1" %3',
-    'for %%A in ("%~1") do if not "%%~zA"=="%~2" set "FAILED=%FAILED% %~1"',
-    'exit /b', '',
-    ':fetchsmall',
-    'if exist "%~1" (',
-    '  echo %~1: already there',
-    '  exit /b',
-    ')',
-    'echo %~1',
-    'curl.exe -f -L --retry 5 -o "%~1.part" %2',
-    'if errorlevel 1 (',
-    '  if exist "%~1.part" del "%~1.part"',
-    '  set "FAILED=%FAILED% %~1"',
-    ') else (',
-    '  move /y "%~1.part" "%~1" >nul',
-    ')',
-    'exit /b', ''].join('\r\n');
-}
 function drawDownload() {
   const sel = selection(), bytes = sel.reduce((s, r) => s + r.file_size_bytes, 0);
   const hasUrl = sel.length > 0 && sel.every(r => r.url);
@@ -618,20 +527,14 @@ function drawDownload() {
   const tooMany = !zipMode && (sel.length > MAX_FILES || bytes > MAX_BYTES);   // the zip download has no limit
   btn.disabled = !hasUrl || tooMany;
   if (!sel.length) note.textContent = 'Select instances with the checkboxes in the table, or by clicking points in the plot.';
-  else if (!anyUrl) note.textContent = 'Downloads are not yet available: the files are not on Harvard Dataverse yet. The download script will work once they are.';
+  else if (!anyUrl) note.textContent = 'Downloads are not yet available: the files are not on Harvard Dataverse yet.';
   else if (!hasUrl) note.textContent = 'Some selected instances have no download address yet.';
-  else if (tooMany) note.textContent = `The button downloads up to ${MAX_FILES} instances or ${fmtBytes(MAX_BYTES)} at a time, because browsers handle many large downloads poorly. For this selection, use the download script below.`;
-  else if (zipMode) note.textContent = 'The files are saved into one zip file; your browser asks where to save it. Keep this page open until the download is complete. For very large selections, the download script below is more robust: it can be resumed at any time and needs no extra disk space for unzipping.';
-  else note.textContent = 'Your browser may ask for permission to download several files. For larger selections, use the download script below.';
+  else if (tooMany) note.textContent = `In this browser, the button downloads up to ${MAX_FILES} instances or ${fmtBytes(MAX_BYTES)} at a time, one file after another. For larger selections, use Chrome or Edge, which save any selection into one zip file.`;
+  else if (zipMode) note.textContent = 'The files are saved into one zip file; your browser asks where to save it. Keep this page open until the download is complete.';
+  else if (!ZIP_OK) note.textContent = 'Your browser may ask for permission to download several files. Chrome and Edge save any selection into one zip file.';
+  else note.textContent = '';
 
-  $('btn-bat').disabled = !hasUrl; $('btn-sh').disabled = !hasUrl;
-  $('btn-urls').disabled = !hasUrl;
-  $('btn-md5').disabled = !(sel.length > 0 && sel.every(r => r.md5));
   $('with-sol').disabled = !rows.some(r => r.sol_warmip_url);
-}
-function saveText(name, text) {
-  const a = el('a', { href: URL.createObjectURL(new Blob([text], { type: 'text/plain' })), download: name });
-  document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 // ---------------------------------------------------------------- zip file (stored, zip64)
 // Each file is streamed from its address straight into the zip on disk; the CRC-32 and the sizes are
@@ -743,7 +646,7 @@ async function saveZip(files) {
   } catch (e) {
     try { await w.abort(); } catch (_) {}
     drawDownload();
-    note.textContent = `The download stopped (${e.message}). Try again, or use the download script below, which can resume.`;
+    note.textContent = `The download stopped (${e.message}). Please try again.`;
   }
 }
 async function downloadSelected() {
@@ -781,12 +684,6 @@ $('btn-all').addEventListener('click', () => { rows.filter(passes).forEach(r => 
 $('btn-none').addEventListener('click', () => { selected.clear(); update(); });
 $('btn-reset').addEventListener('click', resetFilters);
 $('btn-dl').addEventListener('click', downloadSelected);
-$('btn-bat').addEventListener('click', () => saveText('radoptlib-download.bat', scriptBat(selection())));
-$('btn-sh').addEventListener('click', () => saveText('radoptlib-download.sh', scriptSh(selection())));
-$('btn-urls').addEventListener('click', () => { const sel = selection();
-  saveText('radoptlib-addresses.txt', sel.map(r => r.url).concat(solutions(sel).map(r => r.sol_warmip_url)).join('\n') + '\n'); });
-$('btn-md5').addEventListener('click', () => { const sel = selection();
-  saveText('radoptlib-checksums.md5', sel.map(r => r.md5 + '  ' + r.name + '.h5').concat(solutions(sel).filter(r => r.sol_warmip_md5).map(r => r.sol_warmip_md5 + '  ' + solName(r))).join('\n') + '\n'); });
 $('with-sol').addEventListener('change', drawDownload);
 const plotEl = $('plot');
 plotEl.addEventListener('pointermove', ev => showTip(nearest(ev), ev));

@@ -4,8 +4,8 @@
 [![Code license: MIT](https://img.shields.io/badge/code%20license-MIT-green)](LICENSE)
 [![Data license: CC BY 4.0](https://img.shields.io/badge/data%20license-CC%20BY%204.0-lightgrey)](LICENSE-DATA.md)
 
-[Dashboard](https://radiotherapy-optimization.github.io/RadOptLIB/dashboard/) · [Quick start](#quick-start) · [Python notebook](examples/quickstart.ipynb) ·
-[Documentation](docs/qp.md) · [MPS converter](docs/mps.md) · [How to cite](#citation)
+[Data Dashboard](https://radiotherapy-optimization.github.io/RadOptLIB/dashboard/) · [Quick start](#quick-start) · [Python notebook](examples/quickstart.ipynb) ·
+[MPS converter](docs/mps.md)
 
 RadOptLIB provides large-scale optimization problems from cancer radiotherapy for benchmarking
 solvers and algorithms. The problems are real: they come from the treatment planning system used
@@ -64,7 +64,7 @@ The instances and reference solutions are HDF5 files on
 [Harvard Dataverse](https://doi.org/10.7910/DVN/W38OB6). There are three ways to use them:
 
 - **Without programming:** browse, select and download instances in the
-  [dashboard](https://radiotherapy-optimization.github.io/RadOptLIB/dashboard/), or from the dataset
+  [Data Dashboard](https://radiotherapy-optimization.github.io/RadOptLIB/dashboard/), or from the dataset
   page on Harvard Dataverse.
 - **In any language:** read the files with any HDF5 library; short reading code for Python, Julia and
   MATLAB is in [docs/qp.md](docs/qp.md#reading-a-file). For solvers that read MPS files, the
@@ -84,6 +84,8 @@ The instances and reference solutions are HDF5 files on
   ```
 
   The [quick-start notebook](examples/quickstart.ipynb) shows every step with its output.
+
+For more details, see [Data format and access](#data-format-and-access).
 
 ## Problem statistics
 
@@ -120,17 +122,16 @@ solution is a second file named `rt-<class>-####-sol-<solver>.h5` (for example
 download address and checksum, and the download address and checksum of its reference solution.
 
 <details>
-<summary><b>Browse and download instances in the dashboard (no programming)</b></summary>
+<summary><b>Browse and download instances in the Data Dashboard (no programming)</b></summary>
 <br>
 
-The [dashboard](https://radiotherapy-optimization.github.io/RadOptLIB/dashboard/) shows all instances in a plot and a table.
+The [Data Dashboard](https://radiotherapy-optimization.github.io/RadOptLIB/dashboard/) shows all instances in a plot and a table.
 
 1. Filter the instances by size class, disease site and type.
 2. Select instances with the checkboxes in the table, or by clicking points in the plot.
-3. Download the selection with the button (up to 10 instances or 5 GB at a time), with or without
-   the reference solutions. For larger selections, the dashboard provides a download script for
-   Windows, macOS and Linux that needs nothing installed, and lists of the file addresses and
-   checksums.
+3. Download the selection with the button, with or without the reference solutions. In Chrome and
+   Edge, any selection is saved into one zip file; other browsers download the files one by one (up
+   to 10 instances or 5 GB at a time).
 
 The same files can be downloaded from the dataset page on Harvard Dataverse,
 [doi:10.7910/DVN/W38OB6](https://doi.org/10.7910/DVN/W38OB6).
@@ -240,7 +241,7 @@ Every instance has a reference solution, computed with
 [Warm-IP](https://github.com/Radiotherapy-Optimization/Warm-IP). Each file stores the solver's primal
 and dual vectors. The objective value and the residuals are not stored; they can be computed with
 `evaluate_solution` ([docs/qp.md](docs/qp.md#evaluating-a-solution)). The reference solutions can be
-downloaded together with the instances in the [dashboard](https://radiotherapy-optimization.github.io/RadOptLIB/dashboard/),
+downloaded together with the instances in the [Data Dashboard](https://radiotherapy-optimization.github.io/RadOptLIB/dashboard/),
 or with `load_solution` in Python (see [Quick start](#quick-start)).
 
 ## Citation
@@ -248,8 +249,7 @@ or with `load_solution` in Python (see [Quick start](#quick-start)).
 A paper dedicated to RadOptLIB is in preparation. Until it appears, please cite the paper below. The
 RadOptLIB instances were generated with the clinical version of
 [PortPy](https://github.com/PortPy-Project/PortPy), the open-source project that this paper presents.
-The Harvard Dataverse DOI identifies where the data files are hosted; to cite RadOptLIB, please cite
-this paper.
+To cite RadOptLIB, please cite this paper.
 
 ```bibtex
 @inproceedings{jhanwar2026portpyai,
@@ -268,8 +268,9 @@ this paper.
 ## Contact
 
 - **Questions and bug reports:** please open an
-  [issue](https://github.com/Radiotherapy-Optimization/RadOptLIB/issues), or contact **Core Contributor** Gourav Jhanwar (jhanwarg@mskcc.org), Memorial Sloan Kettering
-  Cancer Center.
+  [issue](https://github.com/Radiotherapy-Optimization/RadOptLIB/issues), or contact Gourav Jhanwar
+  (jhanwarg@mskcc.org).
+- **Maintainer:** Gourav Jhanwar (jhanwarg@mskcc.org), Memorial Sloan Kettering Cancer Center.
 - **Principal investigator:** Masoud Zarepisheh (zarepism@mskcc.org), Memorial Sloan Kettering Cancer
   Center, also the contact for collaborations.
 - **Collaborator and advisor:** Mojtaba Tefagh (m.tefagh@ed.ac.uk), University of Edinburgh.

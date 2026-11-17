@@ -129,9 +129,9 @@ The [Data Dashboard](https://radiotherapy-optimization.github.io/RadOptLIB/dashb
 
 1. Filter the instances by size class, disease site and type.
 2. Select instances with the checkboxes in the table, or by clicking points in the plot.
-3. Download the selection with the button, with or without the reference solutions. In Chrome and
-   Edge, any selection is saved into one zip file; other browsers download the files one by one (up
-   to 10 instances or 5 GB at a time).
+3. Download the selection with the button, with or without the reference solutions. Please use
+   Chrome or Edge, which save any selection into one zip file; other browsers download the files
+   one by one (up to 10 instances or 5 GB at a time).
 
 The same files can be downloaded from the dataset page on Harvard Dataverse,
 [doi:10.7910/DVN/W38OB6](https://doi.org/10.7910/DVN/W38OB6).
@@ -249,7 +249,6 @@ or with `load_solution` in Python (see [Quick start](#quick-start)).
 A paper dedicated to RadOptLIB is in preparation. Until it appears, please cite the paper below. The
 RadOptLIB instances were generated with the clinical version of
 [PortPy](https://github.com/PortPy-Project/PortPy), the open-source project that this paper presents.
-To cite RadOptLIB, please cite this paper.
 
 ```bibtex
 @inproceedings{jhanwar2026portpyai,
@@ -268,9 +267,8 @@ To cite RadOptLIB, please cite this paper.
 ## Contact
 
 - **Questions and bug reports:** please open an
-  [issue](https://github.com/Radiotherapy-Optimization/RadOptLIB/issues), or contact Gourav Jhanwar
-  (jhanwarg@mskcc.org).
-- **Maintainer:** Gourav Jhanwar (jhanwarg@mskcc.org), Memorial Sloan Kettering Cancer Center.
+  [issue](https://github.com/Radiotherapy-Optimization/RadOptLIB/issues), or contact the maintainer,
+  Gourav Jhanwar (jhanwarg@mskcc.org), Memorial Sloan Kettering Cancer Center.
 - **Principal investigator:** Masoud Zarepisheh (zarepism@mskcc.org), Memorial Sloan Kettering Cancer
   Center, also the contact for collaborations.
 - **Collaborator and advisor:** Mojtaba Tefagh (m.tefagh@ed.ac.uk), University of Edinburgh.

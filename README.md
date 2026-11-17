@@ -7,15 +7,15 @@
 [Data Dashboard](https://radiotherapy-optimization.github.io/RadOptLIB/dashboard/) · [Quick start](#quick-start) · [Python notebook](examples/quickstart.ipynb) ·
 [MPS converter](docs/mps.md)
 
-RadOptLIB provides large-scale optimization problems from cancer radiotherapy for benchmarking
+RadOptLIB provides **large-scale optimization problems** from cancer radiotherapy for benchmarking
 solvers and algorithms. The problems are real: they come from the treatment planning system used
-clinically at Memorial Sloan Kettering Cancer Center and are built from real patient cases. For each
+clinically at Memorial Sloan Kettering Cancer Center and are built from **real patient cases**. For each
 patient, the system optimizes the shape and intensity of the radiation beams to fit that patient's
 anatomy, so that more radiation reaches the tumor and less reaches the surrounding healthy tissue.
-The instances have up to hundreds of thousands of variables and constraints and up to hundreds of
-millions of nonzeros.
+The instances have up to hundreds of thousands of variables and constraints and up to **hundreds of
+millions of nonzeros**.
 
-The first release contains convex continuous quadratic programs (QPs):
+The first release contains **convex continuous quadratic programs (QPs)**:
 
 | Class | Problem type | Formulation | Instances | Details |
 |---|---|---|---|---|

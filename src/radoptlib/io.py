@@ -15,7 +15,14 @@ PROBLEM_CLASSES = ('qp',)
 MANIFEST_URL = 'https://raw.githubusercontent.com/Radiotherapy-Optimization/RadOptLIB/main/manifest/{}.csv'
 INT_COLUMNS = ('type', 'n_vars', 'n_ineq_cons', 'n_eq_cons', 'nnz_Q', 'nnz_G', 'file_size_bytes')
 
+# Harvard Dataverse refuses Python's default User-Agent ("Python-urllib/3.x") with 403 Forbidden.
+USER_AGENT = 'radoptlib (https://github.com/Radiotherapy-Optimization/RadOptLIB)'
+
 _manifest_cache = {}
+
+
+def _urlopen(url, timeout):
+    return urllib.request.urlopen(urllib.request.Request(url, headers={'User-Agent': USER_AGENT}), timeout=timeout)
 
 
 def data_dir():
@@ -47,7 +54,7 @@ def _load_manifest(problem_class):
     else:
         cached = data_dir() / 'manifest' / '{}.csv'.format(problem_class)
         try:
-            with urllib.request.urlopen(MANIFEST_URL.format(problem_class), timeout=30) as resp:
+            with _urlopen(MANIFEST_URL.format(problem_class), timeout=30) as resp:
                 text = resp.read().decode('utf-8')
             cached.parent.mkdir(parents=True, exist_ok=True)
             cached.write_text(text, encoding='utf-8')
@@ -145,7 +152,7 @@ def download(name_or_class, disease_site=None, **filters):
         dst = data_dir() / (r['name'] + '.h5')
         part = dst.with_suffix('.h5.part')
         print('[{}/{}] {} ({:.2f} GB)'.format(i, len(todo), r['name'], r['file_size_bytes'] / 1e9), flush=True)
-        with urllib.request.urlopen(r['url'], timeout=60) as resp, open(part, 'wb') as out:
+        with _urlopen(r['url'], timeout=60) as resp, open(part, 'wb') as out:
             shutil.copyfileobj(resp, out, length=1 << 24)
         if r.get('md5') and _md5(part) != r['md5']:
             part.unlink()
@@ -233,7 +240,7 @@ def load_solution(name_or_path, solver='warmip'):
         if not path.exists() and url:
             part = path.with_suffix('.h5.part')
             print('downloading the {} reference solution of {}'.format(solver, name_or_path), flush=True)
-            with urllib.request.urlopen(url, timeout=60) as resp, open(part, 'wb') as out:
+            with _urlopen(url, timeout=60) as resp, open(part, 'wb') as out:
                 shutil.copyfileobj(resp, out, length=1 << 24)
             if md5 and _md5(part) != md5:
                 part.unlink()
